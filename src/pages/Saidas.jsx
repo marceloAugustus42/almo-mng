@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle } from 'lucide-react'
-import { api, DESTINOS } from '../lib/api'
+import { api, getDestinos } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 
 const fmtDate = d => d ? d.split('-').reverse().join('/') : ''
@@ -17,6 +17,7 @@ function gerarNumeroPedido(saidas) {
 }
 
 export default function Saidas() {
+  const [destinosList] = useState(getDestinos)
   const [itens, setItens] = useState([])
   const [saidas, setSaidas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,7 +29,7 @@ export default function Saidas() {
 
   // Cabeçalho do pedido
   const [cabecalho, setCabecalho] = useState({
-    data: today(), pedido: '', destino: DESTINOS[0], solicitante: '', responsavel: '', obs: ''
+    data: today(), pedido: '', destino: getDestinos()[0] || '', solicitante: '', responsavel: '', obs: ''
   })
   const setCab = (k, v) => setCabecalho(f => ({ ...f, [k]: v }))
 
@@ -93,7 +94,7 @@ export default function Saidas() {
       ))
       toast(`${validas.length} item(ns) registrado(s)!`)
       const novoPedido = gerarNumeroPedido([...saidas, ...validas])
-      setCabecalho({ data: today(), pedido: novoPedido, destino: DESTINOS[0], solicitante: '', responsavel: '', obs: '' })
+      setCabecalho({ data: today(), pedido: novoPedido, destino: getDestinos()[0] || '', solicitante: '', responsavel: '', obs: '' })
       setLinhas([{ ...ITEM_VAZIO }])
       loadSaidas(); loadItens()
     } catch { toast('Erro ao registrar saída.', 'error') }
@@ -133,7 +134,7 @@ export default function Saidas() {
             <Field label="Destino" required>
               <select className="input" value={cabecalho.destino}
                 onChange={e => setCab('destino', e.target.value)}>
-                {DESTINOS.map(d => <option key={d}>{d}</option>)}
+                {destinosList.map(d => <option key={d}>{d}</option>)}
               </select>
             </Field>
             <Field label="Solicitante">
@@ -216,7 +217,7 @@ export default function Saidas() {
           <select className="input !py-1.5 !text-xs w-44" value={filtroDest}
             onChange={e => setFiltroDest(e.target.value)}>
             <option value="">Todos os destinos</option>
-            {DESTINOS.map(d => <option key={d}>{d}</option>)}
+            {destinosList.map(d => <option key={d}>{d}</option>)}
           </select>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
