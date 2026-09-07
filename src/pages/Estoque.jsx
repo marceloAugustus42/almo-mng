@@ -42,8 +42,11 @@ function ItemModal({ open, onClose, item, onSave }) {
           </Field>
         </div>
         <Field label="Valor Unitário (R$)">
-          <input type="number" step="0.01" min="0" className="input" value={form.vlr_unit}
-            onChange={e=>set('vlr_unit',parseFloat(e.target.value)||0)} />
+          <input type="number" step="0.01" min="0" className="input"
+            value={form.vlr_unit}
+            onFocus={e => { if (Number(e.target.value) === 0) e.target.select() }}
+            onChange={e => set('vlr_unit', e.target.value)}
+            onBlur={e => set('vlr_unit', parseFloat(e.target.value) || 0)} />
         </Field>
         <div className="flex gap-3 justify-end pt-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>

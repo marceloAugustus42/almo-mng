@@ -16,8 +16,17 @@ export const api = {
 }
 
 // ── Mock local (localStorage) ──────────────────────────────────────────────
-const DESTINOS = ['CRAS Centro','CRAS Vila','CRAS Triângulo','CRAS Habbitat',
-                  'Sede','CREAS','Asilo','Conselho Tutelar','Casa dos Conselhos']
+const DESTINOS_PADRAO = ['CRAS Centro','CRAS Vila','CRAS Triângulo','CRAS Habbitat',
+                         'Sede','CREAS','Asilo','Conselho Tutelar','Casa dos Conselhos']
+
+export function getDestinos() {
+  try {
+    const raw = localStorage.getItem('almoxa_destinos')
+    return raw ? JSON.parse(raw) : DESTINOS_PADRAO
+  } catch { return DESTINOS_PADRAO }
+}
+
+const DESTINOS = DESTINOS_PADRAO
 
 function getDB() {
   const raw = localStorage.getItem('almoxa_db')
@@ -163,39 +172,98 @@ function mockFallback(method, path, body) {
     const prefix = `${ano}-${mes}`
     const saldos = calcSaldos(db)
     const sMes = db.saidas.filter(s => s.data.startsWith(prefix))
-    const eMes = db.entradas.filter(e => e.data.startsWith(prefix))
 
-    // Top 10 itens saídas no mês
-    const topMap = {}
-    sMes.forEach(s => { topMap[s.item_id] = (topMap[s.item_id]||0)+s.quantidade })
-    const top10 = Object.entries(topMap)
+    // KPIs
+    const kpis = {
+      total_itens:       saldos.length,
+      total_entradas_qtd: db.entradas.filter(e=>e.data.startsWith(prefix)).reduce((s,e)=>s+e.quantidade,0),
+      total_saidas_qtd:  sMes.reduce((s,e)=>s+e.quantidade,0),
+      criticos: saldos.filter(s=>s.saldo>0&&s.saldo<=5).length,
+      zerados:  saldos.filter(s=>s.saldo<=0).length,
+    }
+
+    // Entradas vs Saídas por dia do mês (todos os dias do mês)
+    const diasNoMes = new Date(parseInt(ano), parseInt(mes), 0).getDate()
+    const entradasVsSaidas = Array.from({ length: diasNoMes }, (_, i) => {
+      const dia = String(i+1).padStart(2,'0')
+      const dayPrefix = `${ano}-${mes}-${dia}`
+      return {
+        dia: `${dia}/${mes}`,
+        entradas: db.entradas.filter(e=>e.data===dayPrefix).reduce((s,e)=>s+e.quantidade,0),
+        saidas:   db.saidas.filter(s=>s.data===dayPrefix).reduce((s,e)=>s+e.quantidade,0),
+      }
+    }).filter(d => d.entradas > 0 || d.saidas > 0)  // omite dias sem movimento
+
+    // Curva ABC — top 10 produtos mais consumidos no período selecionado
+    const consumoMap = {}
+    sMes.forEach(s => { consumoMap[s.item_id] = (consumoMap[s.item_id]||0)+s.quantidade })
+    const totalConsumo = Object.values(consumoMap).reduce((a,b)=>a+b,0)
+    let acumulado = 0
+    const curvaABC = Object.entries(consumoMap)
       .sort((a,b)=>b[1]-a[1]).slice(0,10)
-      .map(([id,qtd]) => ({ nome: db.itens.find(i=>i.id===parseInt(id))?.nome||'', qtd }))
+      .map(([id,qtd]) => {
+        acumulado += qtd
+        const pct = totalConsumo > 0 ? (acumulado/totalConsumo)*100 : 0
+        return { nome: db.itens.find(i=>i.id===parseInt(id))?.nome||'', qtd, pct: +pct.toFixed(1) }
+      })
 
-    // Por destino no mês
+    // Composição do estoque por tipo (valor R$)
+    const tipoMap = {}
+    saldos.forEach(s => {
+      const vlr = (s.saldo||0) * (s.vlr_unit||0)
+      tipoMap[s.tipo] = (tipoMap[s.tipo]||0) + vlr
+    })
+    const composicaoEstoque = Object.entries(tipoMap)
+      .filter(([,v])=>v>0)
+      .map(([tipo,valor]) => ({ tipo, valor: +valor.toFixed(2) }))
+      .sort((a,b)=>b.valor-a.valor)
+
+    // Estoque parado: sem nenhuma saída nos últimos 90 dias
+    const hoje = new Date().toISOString().slice(0,10)
+    const limite90 = new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10)
+    const parado = saldos
+      .filter(s => s.saldo > 0)
+      .map(s => {
+        const ultimaSaida = db.saidas
+          .filter(x=>x.item_id===s.id)
+          .map(x=>x.data)
+          .sort().reverse()[0] || null
+        const dias = ultimaSaida
+          ? Math.floor((new Date(hoje)-new Date(ultimaSaida))/(24*60*60*1000))
+          : 9999
+        return { ...s, ultimaSaida, diasParado: dias, valorParado: +(s.saldo*(s.vlr_unit||0)).toFixed(2) }
+      })
+      .filter(s => s.diasParado >= 90)
+      .sort((a,b)=>b.diasParado-a.diasParado)
+
+    // Últimas 15 movimentações com hora (criado_em ou data)
+    const movs = [
+      ...db.entradas.map(e => ({
+        tipo:'Entrada', data:e.data, criado_em:e.criado_em||e.data,
+        item_id:e.item_id, qtd:e.quantidade,
+        solicitante: e.fornecedor||e.responsavel||'—'
+      })),
+      ...db.saidas.map(s => ({
+        tipo:'Saída', data:s.data, criado_em:s.criado_em||s.data,
+        item_id:s.item_id, qtd:s.quantidade,
+        solicitante: s.solicitante||s.destino||'—'
+      }))
+    ]
+    .sort((a,b)=> (b.criado_em||'').localeCompare(a.criado_em||''))
+    .slice(0,15)
+    .map(m => ({ ...m, item_nome: db.itens.find(i=>i.id===m.item_id)?.nome||'' }))
+
+    // Por destino no mês (mantido para gráfico existente)
     const destMap = {}
     sMes.forEach(s => { destMap[s.destino] = (destMap[s.destino]||0)+s.quantidade })
     const porDestino = Object.entries(destMap).map(([dest,qtd]) => ({ dest, qtd }))
 
-    // Últimas 10 movimentações
-    const movs = [
-      ...db.entradas.map(e => ({ tipo:'Entrada', data:e.data, item_id:e.item_id, qtd:e.quantidade, extra:e.fornecedor||'' })),
-      ...db.saidas.map(s => ({ tipo:'Saída', data:s.data, item_id:s.item_id, qtd:s.quantidade, extra:s.destino||'' }))
-    ].sort((a,b) => b.data.localeCompare(a.data)).slice(0,10)
-      .map(m => ({ ...m, item_nome: db.itens.find(i=>i.id===m.item_id)?.nome||'' }))
+    // Top10 (alias curvaABC para compatibilidade)
+    const top10 = curvaABC
 
     return Promise.resolve({
-      kpis: {
-        total_itens: saldos.length,
-        total_entradas_qtd: db.entradas.filter(e=>e.data.startsWith(prefix)).reduce((s,e)=>s+e.quantidade,0),
-        total_saidas_qtd:   sMes.reduce((s,e)=>s+e.quantidade,0),
-        criticos: saldos.filter(s=>s.saldo>0&&s.saldo<=5).length,
-        zerados:  saldos.filter(s=>s.saldo<=0).length,
-      },
-      alertas: saldos.filter(s=>s.saldo<=5).sort((a,b)=>a.saldo-b.saldo),
-      top10,
-      porDestino,
-      movs,
+      kpis, alertas: saldos.filter(s=>s.saldo<=5).sort((a,b)=>a.saldo-b.saldo),
+      entradasVsSaidas, curvaABC, composicaoEstoque, parado, movs, porDestino, top10,
     })
   }
 
