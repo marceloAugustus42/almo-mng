@@ -3,7 +3,7 @@ import { Plus, Trash2, Search, X, PackagePlus } from 'lucide-react'
 import { api } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 
-const fmtDate = d => d ? d.split('-').reverse().join('/') : ''
+const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 const today   = () => new Date().toISOString().slice(0,10)
 
 const UNIDADES    = ['Unidade','Pacote','Caixa','Resma','Litro','Kg','Par','Rolo','Frasco']
@@ -11,7 +11,7 @@ const TIPOS_KEY   = 'almoxa_tipos'
 const TIPOS_PAD   = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
 const getTipos    = () => { try { const r=localStorage.getItem(TIPOS_KEY); return r?JSON.parse(r):TIPOS_PAD } catch { return TIPOS_PAD } }
 
-const LINHA_VAZIA = { item_id:'', quantidade:1, vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade' }
+const LINHA_VAZIA = { item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade' }
 
 export default function Entradas() {
   const [itens, setItens]       = useState([])
@@ -57,10 +57,19 @@ export default function Entradas() {
     e.preventDefault()
     const validas = linhas.filter(l=>l.novo ? l.nome.trim() : l.item_id)
     if (!validas.length) { toast('Adicione ao menos um item.','error'); return }
-    if (validas.some(l=>!l.quantidade||l.quantidade<1)) { toast('Quantidade deve ser inteiro ≥ 1.','error'); return }
+    if (validas.some(l=>!l.quantidade||Number(l.quantidade)<1)) { toast('Preencha a quantidade de todos os itens.','error'); return }
 
     setSaving(true)
     try {
+      // Persiste novos tipos no localStorage
+      const tiposKey = 'almoxa_tipos'
+      const tiposAtuais = JSON.parse(localStorage.getItem(tiposKey)||'[]')
+      validas.filter(l=>l.novo&&l.novoTipo&&l.tipoNovo?.trim()).forEach(l=>{
+        const t = l.tipoNovo.trim()
+        if (!tiposAtuais.includes(t)) tiposAtuais.push(t)
+      })
+      localStorage.setItem(tiposKey, JSON.stringify(tiposAtuais))
+
       for (const l of validas) {
         let item_id = l.item_id
         // Se novo cadastro, cria o item primeiro
@@ -144,19 +153,32 @@ export default function Entradas() {
                         </div>
                       )
                     }
-                    {/* Checkbox novo cadastro */}
-                    <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                      <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)}
-                        className="accent-[#07635b]"/>
-                      Novo cadastro (primeiro registro deste item)
-                    </label>
+                    {/* Checkboxes */}
+                    <div className="flex flex-wrap gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+                        <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)} className="accent-[#07635b]"/>
+                        Novo cadastro (primeiro registro deste item)
+                      </label>
+                      {linha.novo && (
+                        <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+                          <input type="checkbox" checked={linha.novoTipo||false}
+                            onChange={e=>setL(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
+                          Cadastrar novo tipo
+                        </label>
+                      )}
+                    </div>
+                    {linha.novo && linha.novoTipo && (
+                      <input className="input !text-xs mt-1" placeholder="Nome do novo tipo..."
+                        value={linha.tipoNovo||''}
+                        onChange={e=>setL(idx,'tipoNovo',e.target.value)}/>
+                    )}
                   </div>
 
                   {/* Quantidade */}
                   <div className="col-span-5 sm:col-span-3">
-                    <input type="number" min="1" step="1" className="input" placeholder="Qtd"
-                      value={linha.quantidade}
-                      onChange={e=>setL(idx,'quantidade',Math.floor(Number(e.target.value))||1)}/>
+                    <input type="number" min="1" step="1" placeholder="Qtd" value={linha.quantidade}
+                      className={`input ${!linha.quantidade?'border-red-400':''}`}
+                      onChange={e=>setL(idx,'quantidade',e.target.value===''?'':Math.floor(Number(e.target.value)))}/>
                   </div>
 
                   {/* Vlr Unit */}

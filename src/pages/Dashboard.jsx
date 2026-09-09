@@ -13,8 +13,21 @@ const COR_ABC  = '#07635b'
 const COR_PCT  = '#5e8e89'
 const DONUT_COLORS = ['#07635b','#5e8e89','#dbf1ef','#E67E22','#C0392B','#8E44AD','#3498DB','#D4AC0D']
 
-const fmtDate  = d => d ? d.split('-').reverse().join('/') : '—'
-const fmtHora  = s => s?.length >= 16 ? s.slice(11,16) : '—'
+const fmtDate = d => {
+  if (!d) return '—'
+  const dt = new Date(d)
+  if (isNaN(dt)) return String(d).slice(0,10).split('-').reverse().join('/')
+  return `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}/${dt.getUTCFullYear()}`
+}
+
+const fmtHora = s => {
+  if (!s) return '—'
+  const dt = new Date(s)
+  if (isNaN(dt)) return '—'
+  const h = String(dt.getUTCHours()).padStart(2,'0')
+  const m = String(dt.getUTCMinutes()).padStart(2,'0')
+  return h === '00' && m === '00' ? '—' : `${h}:${m}`
+}
 const fmtMoeda = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2 })}`
 
 const EMPTY_DATA = {
@@ -250,7 +263,7 @@ export default function Dashboard() {
               : data.movs.map((m, i) => (
                   <tr key={i} className="trow">
                     <td className="td font-mono text-xs text-slate-500 whitespace-nowrap">
-                      {fmtDate(m.data)} {fmtHora(m.criado_em)}
+                      {fmtDate(m.criado_em || m.data)}{fmtHora(m.criado_em) !== '—' ? ` ${fmtHora(m.criado_em)}` : ''}
                     </td>
                     <td className="td">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold

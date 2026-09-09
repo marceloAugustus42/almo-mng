@@ -23,16 +23,18 @@ const ORDENACOES = [
 
 function ItemModal({ open, onClose, item, onSave, tipos }) {
   const [form, setForm] = useState({ nome:'', tipo:'Limpeza', unidade:'Unidade', vlr_unit:'' })
+  const [ajuste, setAjuste] = useState('')
   useEffect(() => {
     setForm(item
       ? { nome:item.nome, tipo:item.tipo, unidade:item.unidade, vlr_unit:item.vlr_unit||'' }
       : { nome:'', tipo: tipos[0]||'Limpeza', unidade:'Unidade', vlr_unit:'' })
+    setAjuste('')
   }, [item, open])
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
   async function submit(e) {
     e.preventDefault()
     if (!form.nome.trim()) return
-    await onSave({ ...form, vlr_unit: parseFloat(form.vlr_unit)||0 })
+    await onSave({ ...form, vlr_unit: parseFloat(form.vlr_unit)||0, ajuste: ajuste !== '' ? parseInt(ajuste) : null })
     onClose()
   }
   return (
@@ -59,6 +61,15 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
             onChange={e=>set('vlr_unit',e.target.value)}
             onBlur={e=>set('vlr_unit', parseFloat(e.target.value)||'')} />
         </Field>
+        {item && (
+          <Field label="Ajustar Quantidade em Estoque">
+            <input type="number" step="1" className="input"
+              placeholder={`Atual: ${Math.round(item.saldo||0)} — digite o novo valor`}
+              value={ajuste}
+              onChange={e=>setAjuste(e.target.value)}/>
+            <p className="text-xs text-slate-400 mt-1">Deixe em branco para não alterar o estoque.</p>
+          </Field>
+        )}
         <div className="flex gap-3 justify-end pt-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
           <button type="submit" className="btn-primary">{item?'Salvar':'Cadastrar'}</button>
@@ -87,8 +98,24 @@ export default function Estoque() {
   useEffect(()=>{ saveTipos(tipos) },[tipos])
 
   async function salvar(form) {
-    if (editando) { await api.put(`/itens/${editando.id}`, form); toast('Item atualizado!') }
-    else { await api.post('/itens', form); toast('Item cadastrado!') }
+    if (editando) {
+      await api.put(`/itens/${editando.id}`, form)
+      // Ajuste de estoque: cria entrada ou saída de correção
+      if (form.ajuste !== null && form.ajuste !== undefined && !isNaN(form.ajuste)) {
+        const novaQtd = parseInt(form.ajuste)
+        const saldoAtual = Math.round(editando.saldo || 0)
+        const diff = novaQtd - saldoAtual
+        if (diff > 0) {
+          await api.post('/entradas', { item_id: editando.id, data: new Date().toISOString().slice(0,10), nf:'', fornecedor:'Ajuste Manual', quantidade: diff, vlr_unit: form.vlr_unit||0, responsavel:'Sistema', obs:'Ajuste de estoque' })
+        } else if (diff < 0) {
+          await api.post('/saidas', { item_id: editando.id, data: new Date().toISOString().slice(0,10), pedido:'', destino:'Ajuste Manual', quantidade: Math.abs(diff), solicitante:'Sistema', responsavel:'Sistema', obs:'Ajuste de estoque' })
+        }
+      }
+      toast('Item atualizado!')
+    } else {
+      await api.post('/itens', form)
+      toast('Item cadastrado!')
+    }
     load()
   }
 
@@ -160,8 +187,8 @@ export default function Estoque() {
           <table className="w-full min-w-max">
             <thead className="bg-[#07635b]">
               <tr>
-                {['Tipo','Item','Unidade','Entradas','Saídas','Saldo','Vlr Unit','Saldo R$','Status',''].map((h,i)=>(
-                  <th key={i} className="th whitespace-nowrap">{h}</th>
+               {['Tipo','Item','Unidade','Entradas','Saídas','Em Estoque','Vlr Unit','Saldo R$','Status',''].map((h,i)=>(
+                <th key={i} className={`th whitespace-nowrap ${h==='Em Estoque'?'text-center':''}`}>{h}</th>
                 ))}
               </tr>
             </thead>

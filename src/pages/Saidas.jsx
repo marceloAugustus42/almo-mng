@@ -3,9 +3,9 @@ import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle } from 'lucide-re
 import { api, getDestinos } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 
-const fmtDate = d => d ? d.split('-').reverse().join('/') : ''
+const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 const today = () => new Date().toISOString().slice(0,10)
-const ITEM_VAZIO = { item_id: '', quantidade: 1 }
+const ITEM_VAZIO = { item_id: '', quantidade: '' }
 
 // Gera número de pedido automático: PED-YYYYMMDD-XXX
 function gerarNumeroPedido(saidas) {
@@ -68,8 +68,8 @@ export default function Saidas() {
     e.preventDefault()
     const validas = linhas.filter(l => l.item_id)
     if (validas.length === 0) { toast('Adicione ao menos um item.', 'error'); return }
-    if (validas.some(l => !l.quantidade || l.quantidade < 1)) {
-      toast('Quantidade deve ser um número inteiro maior que zero.', 'error'); return
+    if (validas.some(l => !l.quantidade || Number(l.quantidade) < 1)) {
+      toast('Preencha a quantidade de todos os itens.', 'error'); return
     }
 
     // Verifica saldo de cada item
@@ -177,9 +177,9 @@ export default function Saidas() {
                       onChange={v => setLinha(idx, 'item_id', v)} />
                   </div>
                   <div className="col-span-9 sm:col-span-4">
-                    <input type="number" min="1" step="1" className={`input ${insuf ? 'border-amber-400' : ''}`}
+                    <input type="number" min="1" step="1" className={`input ${!linha.quantidade?'border-red-400':insuf?'border-amber-400':''}`}
                       placeholder="Qtd" value={linha.quantidade}
-                      onChange={e => setLinha(idx, 'quantidade', Math.floor(Number(e.target.value)) || 1)} />
+                      onChange={e => setLinha(idx, 'quantidade', e.target.value===''?'':Math.floor(Number(e.target.value)))} />
                   </div>
                   <div className={`col-span-2 sm:col-span-1 text-xs font-bold ${saldoCor} flex items-center gap-1`}>
                     {insuf && <AlertTriangle size={11} />}

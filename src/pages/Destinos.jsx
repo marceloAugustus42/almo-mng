@@ -4,7 +4,7 @@ import { api } from '../lib/api'
 import { Table, Empty, Spinner, PeriodFilter, Modal, toast } from '../components/UI'
 import { exportPorDestino } from '../lib/export'
 
-const fmtDate = d => d ? d.split('-').reverse().join('/') : ''
+const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 
 const DESTINOS_KEY = 'almoxa_destinos'
 const SENHA_ADMIN  = 'mikeobrabo'
