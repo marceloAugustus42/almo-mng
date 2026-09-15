@@ -3,15 +3,15 @@ import { Plus, Trash2, Search, X, PackagePlus } from 'lucide-react'
 import { api } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 
-const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
-const today   = () => new Date().toISOString().slice(0,10)
+const fmtDate  = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
+const today    = () => new Date().toISOString().slice(0,10)
 
-const UNIDADES    = ['Unidade','Pacote','Caixa','Resma','Litro','Kg','Par','Rolo','Frasco']
-const TIPOS_KEY   = 'almoxa_tipos'
-const TIPOS_PAD   = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
-const getTipos    = () => { try { const r=localStorage.getItem(TIPOS_KEY); return r?JSON.parse(r):TIPOS_PAD } catch { return TIPOS_PAD } }
+const UNIDADES   = ['Unidade','Pacote','Caixa','Resma','Litro','Kg','Par','Rolo','Frasco']
+const TIPOS_KEY  = 'almoxa_tipos'
+const TIPOS_PAD  = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
+const getTipos   = () => { try { const r=localStorage.getItem(TIPOS_KEY); return r?JSON.parse(r):TIPOS_PAD } catch { return TIPOS_PAD } }
 
-const LINHA_VAZIA = { item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade' }
+const LINHA_VAZIA = { item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade', novoTipo:false, tipoNovo:'' }
 
 export default function Entradas() {
   const [itens, setItens]       = useState([])
@@ -21,33 +21,34 @@ export default function Entradas() {
   const [busca, setBusca]       = useState('')
   const [periodo, setPeriodo]   = useState({ de:'', ate:'' })
   const [confirmDel, setConfirmDel] = useState(null)
-  const [tipos] = useState(getTipos)
+  const [tipos, setTipos]       = useState(getTipos)
 
   const [cab, setCab] = useState({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
-  const setC = (k,v) => setCab(f=>({...f,[k]:v}))
+  const setCabField = (k,v) => setCab(f=>({...f,[k]:v}))
 
   const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
-  const setL = (idx,k,v) => setLinhas(ls=>ls.map((l,i)=>i===idx?{...l,[k]:v}:l))
+  const setLinha = (idx,k,v) => setLinhas(ls=>ls.map((l,i)=>i===idx?{...l,[k]:v}:l))
 
-  function toggleNovo(idx, checked) {
+  // Ao marcar "novo cadastro", limpa o item selecionado
+  const toggleNovo = (idx, checked) =>
     setLinhas(ls=>ls.map((l,i)=>i===idx
-      ? { ...l, novo:checked, item_id:'', nome:'', tipo:tipos[0]||'', unidade:'Unidade', vlr_unit:'' }
+      ? { ...l, novo:checked, item_id:'', nome:'', tipo:tipos[0]||'', unidade:'Unidade', vlr_unit:'', novoTipo:false, tipoNovo:'' }
       : l))
-  }
 
-  function handleItemChange(idx, item_id) {
+  // Ao selecionar item existente, preenche vlr_unit automaticamente
+  const handleItemChange = (idx, item_id) => {
     const item = itens.find(i=>i.id===item_id)
-    setL(idx,'item_id',item_id)
-    if (item) setL(idx,'vlr_unit',item.vlr_unit||'')
+    setLinha(idx,'item_id',item_id)
+    if (item) setLinha(idx,'vlr_unit', item.vlr_unit||'')
   }
 
   const loadItens    = useCallback(()=>api.get('/itens').then(setItens),[])
   const loadEntradas = useCallback(()=>{
     setLoading(true)
-    let p='/entradas?'
-    if(periodo.de)  p+=`de=${periodo.de}&`
-    if(periodo.ate) p+=`ate=${periodo.ate}&`
-    api.get(p).then(setEntradas).finally(()=>setLoading(false))
+    let path='/entradas?'
+    if(periodo.de)  path+=`de=${periodo.de}&`
+    if(periodo.ate) path+=`ate=${periodo.ate}&`
+    api.get(path).then(setEntradas).finally(()=>setLoading(false))
   },[periodo])
 
   useEffect(()=>{ loadItens() },[loadItens])
@@ -55,53 +56,79 @@ export default function Entradas() {
 
   async function submit(e) {
     e.preventDefault()
-    const validas = linhas.filter(l=>l.novo ? l.nome.trim() : l.item_id)
+
+    const validas = linhas.filter(l => l.novo ? l.nome.trim() : l.item_id)
     if (!validas.length) { toast('Adicione ao menos um item.','error'); return }
-    if (validas.some(l=>!l.quantidade||Number(l.quantidade)<1)) { toast('Preencha a quantidade de todos os itens.','error'); return }
+
+    // Valida quantidade de cada linha
+    for (const l of validas) {
+      const qtd = parseInt(l.quantidade)
+      if (!l.quantidade || isNaN(qtd) || qtd < 1) {
+        toast('Preencha a quantidade de todos os itens (mínimo 1).','error'); return
+      }
+    }
 
     setSaving(true)
     try {
       // Persiste novos tipos no localStorage
-      const tiposKey = 'almoxa_tipos'
-      const tiposAtuais = JSON.parse(localStorage.getItem(tiposKey)||'[]')
+      const tiposAtuais = [...tipos]
       validas.filter(l=>l.novo&&l.novoTipo&&l.tipoNovo?.trim()).forEach(l=>{
         const t = l.tipoNovo.trim()
         if (!tiposAtuais.includes(t)) tiposAtuais.push(t)
       })
-      localStorage.setItem(tiposKey, JSON.stringify(tiposAtuais))
+      if (tiposAtuais.length !== tipos.length) {
+        localStorage.setItem(TIPOS_KEY, JSON.stringify(tiposAtuais))
+        setTipos(tiposAtuais)
+      }
 
       for (const l of validas) {
         let item_id = l.item_id
-        // Se novo cadastro, cria o item primeiro
+
+        // Novo item — cadastra primeiro
         if (l.novo) {
           if (itens.some(i=>i.nome.toLowerCase()===l.nome.toLowerCase())) {
-            toast(`"${l.nome}" já existe. Desmarque "Novo cadastro".`,'error'); setSaving(false); return
+            toast(`"${l.nome}" já existe. Desmarque "Novo cadastro".`,'error')
+            setSaving(false); return
           }
-          const novo = await api.post('/itens', { nome:l.nome, tipo:l.tipo||tipos[0], unidade:l.unidade, vlr_unit:parseFloat(l.vlr_unit)||0 })
+          const tipo = l.novoTipo && l.tipoNovo?.trim() ? l.tipoNovo.trim() : (l.tipo || tipos[0])
+          const novo = await api.post('/itens',{ nome:l.nome, tipo, unidade:l.unidade, vlr_unit:parseFloat(l.vlr_unit)||0 })
           item_id = novo.id
         }
-        await api.post('/entradas', { ...cab, item_id, quantidade:Math.floor(Number(l.quantidade)), vlr_unit:parseFloat(l.vlr_unit)||0 })
+
+        await api.post('/entradas',{
+          ...cab,
+          item_id,
+          quantidade: parseInt(l.quantidade),
+          vlr_unit:   parseFloat(l.vlr_unit)||0,
+        })
       }
+
       toast(`${validas.length} item(ns) registrado(s)!`)
       setCab({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
       setLinhas([{ ...LINHA_VAZIA }])
-      loadEntradas(); loadItens()
-    } catch { toast('Erro ao registrar.','error') }
-    finally { setSaving(false) }
+      loadEntradas()
+      loadItens()
+    } catch {
+      toast('Erro ao registrar entrada.','error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function excluir(id) {
     await api.delete(`/entradas/${id}`)
     toast('Entrada removida.','warn')
-    loadEntradas(); loadItens()
+    loadEntradas()
+    loadItens()
   }
 
   const filtered = entradas.filter(e=>
-    !busca||e.item_nome?.toLowerCase().includes(busca.toLowerCase())||
+    !busca ||
+    e.item_nome?.toLowerCase().includes(busca.toLowerCase()) ||
     e.fornecedor?.toLowerCase().includes(busca.toLowerCase())
   )
-  const totQtd = filtered.reduce((s,e)=>s+e.quantidade,0)
-  const totVlr = filtered.reduce((s,e)=>s+e.quantidade*(e.vlr_unit||0),0)
+  const totQtd = filtered.reduce((s,e)=>s+Number(e.quantidade),0)
+  const totVlr = filtered.reduce((s,e)=>s+Number(e.quantidade)*Number(e.vlr_unit||0),0)
 
   return (
     <div className="flex flex-col gap-5 p-6 max-w-screen-xl mx-auto">
@@ -113,11 +140,21 @@ export default function Entradas() {
 
           {/* Cabeçalho */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 border-b border-slate-100">
-            <Field label="Data" required><input type="date" className="input" value={cab.data} onChange={e=>setC('data',e.target.value)}/></Field>
-            <Field label="Nº Nota Fiscal"><input className="input" placeholder="NF-001" value={cab.nf} onChange={e=>setC('nf',e.target.value)}/></Field>
-            <Field label="Fornecedor"><input className="input" placeholder="Nome do fornecedor" value={cab.fornecedor} onChange={e=>setC('fornecedor',e.target.value)}/></Field>
-            <Field label="Responsável"><input className="input" placeholder="Nome" value={cab.responsavel} onChange={e=>setC('responsavel',e.target.value)}/></Field>
-            <Field label="Observações"><input className="input" placeholder="Opcional" value={cab.obs} onChange={e=>setC('obs',e.target.value)}/></Field>
+            <Field label="Data" required>
+              <input type="date" className="input" value={cab.data} onChange={e=>setCabField('data',e.target.value)}/>
+            </Field>
+            <Field label="Nº Nota Fiscal">
+              <input className="input" placeholder="NF-001" value={cab.nf} onChange={e=>setCabField('nf',e.target.value)}/>
+            </Field>
+            <Field label="Fornecedor">
+              <input className="input" placeholder="Nome do fornecedor" value={cab.fornecedor} onChange={e=>setCabField('fornecedor',e.target.value)}/>
+            </Field>
+            <Field label="Responsável">
+              <input className="input" placeholder="Nome" value={cab.responsavel} onChange={e=>setCabField('responsavel',e.target.value)}/>
+            </Field>
+            <Field label="Observações">
+              <input className="input" placeholder="Opcional" value={cab.obs} onChange={e=>setCabField('obs',e.target.value)}/>
+            </Field>
           </div>
 
           {/* Linhas de itens */}
@@ -134,19 +171,23 @@ export default function Entradas() {
               <div key={idx} className="bg-slate-50 rounded-lg p-3 flex flex-col gap-2">
                 <div className="grid grid-cols-12 gap-2 items-start">
 
-                  {/* Coluna: seleção/cadastro de item */}
+                  {/* Item */}
                   <div className="col-span-12 sm:col-span-5 flex flex-col gap-1.5">
                     {!linha.novo
                       ? <ItemCombobox itens={itens} value={linha.item_id} onChange={v=>handleItemChange(idx,v)}/>
                       : (
                         <div className="flex flex-col gap-2">
                           <input className="input" placeholder="Nome do item *" value={linha.nome}
-                            onChange={e=>setL(idx,'nome',e.target.value)}/>
+                            onChange={e=>setLinha(idx,'nome',e.target.value)}/>
                           <div className="grid grid-cols-2 gap-2">
-                            <select className="input !text-xs" value={linha.tipo} onChange={e=>setL(idx,'tipo',e.target.value)}>
-                              {tipos.map(t=><option key={t}>{t}</option>)}
-                            </select>
-                            <select className="input !text-xs" value={linha.unidade} onChange={e=>setL(idx,'unidade',e.target.value)}>
+                            {!linha.novoTipo
+                              ? <select className="input !text-xs" value={linha.tipo} onChange={e=>setLinha(idx,'tipo',e.target.value)}>
+                                  {tipos.map(t=><option key={t}>{t}</option>)}
+                                </select>
+                              : <input className="input !text-xs" placeholder="Novo tipo..." value={linha.tipoNovo}
+                                  onChange={e=>setLinha(idx,'tipoNovo',e.target.value)}/>
+                            }
+                            <select className="input !text-xs" value={linha.unidade} onChange={e=>setLinha(idx,'unidade',e.target.value)}>
                               {UNIDADES.map(u=><option key={u}>{u}</option>)}
                             </select>
                           </div>
@@ -157,42 +198,42 @@ export default function Entradas() {
                     <div className="flex flex-wrap gap-3">
                       <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
                         <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)} className="accent-[#07635b]"/>
-                        Novo cadastro (primeiro registro deste item)
+                        Novo cadastro
                       </label>
                       {linha.novo && (
                         <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                          <input type="checkbox" checked={linha.novoTipo||false}
-                            onChange={e=>setL(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
+                          <input type="checkbox" checked={linha.novoTipo} onChange={e=>setLinha(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
                           Cadastrar novo tipo
                         </label>
                       )}
                     </div>
-                    {linha.novo && linha.novoTipo && (
-                      <input className="input !text-xs mt-1" placeholder="Nome do novo tipo..."
-                        value={linha.tipoNovo||''}
-                        onChange={e=>setL(idx,'tipoNovo',e.target.value)}/>
-                    )}
                   </div>
 
                   {/* Quantidade */}
                   <div className="col-span-5 sm:col-span-3">
-                    <input type="number" min="1" step="1" placeholder="Qtd" value={linha.quantidade}
-                      className={`input ${!linha.quantidade?'border-red-400':''}`}
-                      onChange={e=>setL(idx,'quantidade',e.target.value===''?'':Math.floor(Number(e.target.value)))}/>
+                    <input type="number" min="1" step="1" placeholder="Qtd"
+                      value={linha.quantidade}
+                      className={`input ${!linha.quantidade ? 'border-red-400' : ''}`}
+                      onChange={e=>{
+                        const v = e.target.value
+                        setLinha(idx,'quantidade', v===''?'':Math.floor(Number(v)))
+                      }}/>
                   </div>
 
                   {/* Vlr Unit */}
                   <div className="col-span-5 sm:col-span-3">
-                    <input type="number" min="0" step="0.01" className="input" placeholder="Vlr unit (R$)"
+                    <input type="number" min="0" step="0.01" placeholder="Vlr unit (R$)"
                       value={linha.vlr_unit}
-                      onChange={e=>setL(idx,'vlr_unit',e.target.value)}/>
+                      className="input"
+                      onChange={e=>setLinha(idx,'vlr_unit',e.target.value)}/>
                   </div>
 
                   {/* Remover */}
                   <div className="col-span-2 sm:col-span-1 flex justify-center pt-1">
                     {linhas.length>1 && (
-                      <button type="button" onClick={()=>setLinhas(ls=>ls.filter((_,i)=>i!==idx))}
-                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors">
+                      <button type="button"
+                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                        onClick={()=>setLinhas(ls=>ls.filter((_,i)=>i!==idx))}>
                         <X size={15}/>
                       </button>
                     )}
@@ -203,7 +244,9 @@ export default function Entradas() {
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <span className="text-sm text-slate-500">{linhas.filter(l=>l.novo?l.nome:l.item_id).length} item(ns)</span>
+            <span className="text-sm text-slate-500">
+              {linhas.filter(l=>l.novo?l.nome:l.item_id).length} item(ns) adicionado(s)
+            </span>
             <button type="submit" className="btn-primary flex items-center gap-2 px-6" disabled={saving}>
               <PackagePlus size={16}/> {saving?'Salvando...':'Registrar Entrada'}
             </button>
