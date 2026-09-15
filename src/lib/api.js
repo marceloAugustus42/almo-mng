@@ -2,21 +2,46 @@
 // Tenta o backend real (porta 3001). Se não responder, cai no mock (localStorage).
 const BASE = 'http://localhost:3001/api'
 
+// Testa se o backend está online (resultado cacheado por 10s)
+let _backendOnline = null
+let _lastCheck = 0
+async function isBackendOnline() {
+  const now = Date.now()
+  if (now - _lastCheck < 10000) return _backendOnline
+  try {
+    await fetch('http://localhost:3001/health', { signal: AbortSignal.timeout(2000) })
+    _backendOnline = true
+  } catch {
+    _backendOnline = false
+  }
+  _lastCheck = now
+  return _backendOnline
+}
+
 async function req(method, path, body) {
+  // Se sabemos que o backend está offline, vai direto pro mock
+  const online = await isBackendOnline()
+  if (!online) return mockFallback(method, path, body)
+
   try {
     const res = await fetch(BASE + path, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {
       const msg = await res.text()
       throw new Error(msg || `HTTP ${res.status}`)
     }
+    // Backend respondeu — marca como online
+    _backendOnline = true
+    _lastCheck = Date.now()
     return res.json()
   } catch (err) {
-    // Backend indisponível → usa localStorage como fallback
-    if (err.message.includes('fetch') || err.message.includes('Failed') || err.message.includes('NetworkError')) {
+    // Qualquer erro de rede cai no mock
+    if (err.name === 'TypeError' || err.name === 'TimeoutError' || err.name === 'AbortError') {
+      _backendOnline = false
       return mockFallback(method, path, body)
     }
     throw err

@@ -4,6 +4,33 @@ import { api } from '../lib/api'
 import { Modal, ConfirmModal, Table, StatusBadge, Empty, Spinner, Field, toast } from '../components/UI'
 
 const SENHA_ADMIN = 'mikeobrabo'
+
+function SenhaModal({ open, onClose, onSuccess }) {
+  const [senha, setSenha] = useState('')
+  const [erro, setErro]   = useState(false)
+  function confirmar() {
+    if (senha === SENHA_ADMIN) { setSenha(''); setErro(false); onSuccess() }
+    else { setErro(true); setSenha('') }
+  }
+  useEffect(() => { if (!open) { setSenha(''); setErro(false) } }, [open])
+  return (
+    <Modal open={open} onClose={onClose} title="Autenticação" width="max-w-xs">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-slate-500">Digite a senha para editar este item.</p>
+        <input type="password" autoFocus
+          className={`input ${erro?'border-red-400':''}`}
+          placeholder="Senha" value={senha}
+          onChange={e=>{ setSenha(e.target.value); setErro(false) }}
+          onKeyDown={e=>e.key==='Enter'&&confirmar()} />
+        {erro && <p className="text-xs text-red-500 -mt-2">Senha incorreta.</p>}
+        <div className="flex gap-2 justify-end">
+          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={confirmar}>Confirmar</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 const UNIDADES = ['Unidade','Pacote','Caixa','Resma','Litro','Kg','Par','Rolo','Frasco']
 const TIPOS_KEY = 'almoxa_tipos'
 const TIPOS_PADRAO = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
@@ -63,11 +90,27 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
         </Field>
         {item && (
           <Field label="Ajustar Quantidade em Estoque">
-            <input type="number" step="1" className="input"
-              placeholder={`Atual: ${Math.round(item.saldo||0)} — digite o novo valor`}
+            <input type="number" step="1" min="0" className="input"
+              placeholder={`Saldo atual: ${Math.round(Number(item.saldo)||0)} — digite o novo valor`}
               value={ajuste}
-              onChange={e=>setAjuste(e.target.value)}/>
-            <p className="text-xs text-slate-400 mt-1">Deixe em branco para não alterar o estoque.</p>
+              onChange={e => {
+                const v = e.target.value
+                // Impede negativos
+                if (v !== '' && Number(v) < 0) return
+                setAjuste(v)
+              }}/>
+            <p className="text-xs text-slate-400 mt-1">
+              Deixe em branco para não alterar o estoque.
+              {ajuste !== '' && !isNaN(ajuste) && (
+                <span className="ml-2 font-semibold text-[#07635b]">
+                  {Number(ajuste) > Math.round(Number(item.saldo)||0)
+                    ? `→ Criará entrada de ${Number(ajuste) - Math.round(Number(item.saldo)||0)} unid.`
+                    : Number(ajuste) < Math.round(Number(item.saldo)||0)
+                    ? `→ Criará saída de ${Math.round(Number(item.saldo)||0) - Number(ajuste)} unid.`
+                    : '→ Sem alteração'}
+                </span>
+              )}
+            </p>
           </Field>
         )}
         <div className="flex gap-3 justify-end pt-2">
@@ -86,9 +129,11 @@ export default function Estoque() {
   const [busca, setBusca]       = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
   const [ordenacao, setOrdenacao]   = useState('nome_asc')
-  const [modal, setModal]       = useState(false)
-  const [editando, setEditando] = useState(null)
+  const [modal, setModal]           = useState(false)
+  const [editando, setEditando]     = useState(null)
   const [confirmDel, setConfirmDel] = useState(null)
+  const [senhaModal, setSenhaModal] = useState(false)
+  const [itemPendente, setItemPendente] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -99,16 +144,43 @@ export default function Estoque() {
 
   async function salvar(form) {
     if (editando) {
+      // Busca saldo atualizado direto da API para evitar diff incorreto
+      const listaAtual = await api.get('/itens')
+      const itemAtual  = listaAtual.find(i => i.id === editando.id)
+      const saldoAtual = Math.round(Number(itemAtual?.saldo) || 0)
+
       await api.put(`/itens/${editando.id}`, form)
-      // Ajuste de estoque: cria entrada ou saída de correção
-      if (form.ajuste !== null && form.ajuste !== undefined && !isNaN(form.ajuste)) {
-        const novaQtd = parseInt(form.ajuste)
-        const saldoAtual = Math.round(editando.saldo || 0)
-        const diff = novaQtd - saldoAtual
-        if (diff > 0) {
-          await api.post('/entradas', { item_id: editando.id, data: new Date().toISOString().slice(0,10), nf:'', fornecedor:'Ajuste Manual', quantidade: diff, vlr_unit: form.vlr_unit||0, responsavel:'Sistema', obs:'Ajuste de estoque' })
-        } else if (diff < 0) {
-          await api.post('/saidas', { item_id: editando.id, data: new Date().toISOString().slice(0,10), pedido:'', destino:'Ajuste Manual', quantidade: Math.abs(diff), solicitante:'Sistema', responsavel:'Sistema', obs:'Ajuste de estoque' })
+
+      const ajusteVal = form.ajuste
+      if (ajusteVal !== '' && ajusteVal !== null && ajusteVal !== undefined) {
+        const novaQtd = parseInt(ajusteVal)
+        if (!isNaN(novaQtd) && novaQtd >= 0 && novaQtd !== saldoAtual) {
+          const diff = novaQtd - saldoAtual
+          const hoje = new Date().toISOString().slice(0,10)
+          if (diff > 0) {
+            await api.post('/entradas', {
+              item_id:    editando.id,
+              data:       hoje,
+              nf:         'AJUSTE',
+              fornecedor: 'Ajuste Manual',
+              quantidade: diff,
+              vlr_unit:   Number(form.vlr_unit) || 0,
+              responsavel:'Sistema',
+              obs:        `Ajuste manual: ${saldoAtual} → ${novaQtd}`
+            })
+          } else {
+            await api.post('/saidas', {
+              item_id:    editando.id,
+              data:       hoje,
+              pedido:     'AJUSTE',
+              destino:    'Ajuste Manual',
+              quantidade: Math.abs(diff),
+              solicitante:'Sistema',
+              responsavel:'Sistema',
+              obs:        `Ajuste manual: ${saldoAtual} → ${novaQtd}`
+            })
+          }
+          toast(`Estoque ajustado: ${saldoAtual} → ${novaQtd}`)
         }
       }
       toast('Item atualizado!')
@@ -187,8 +259,8 @@ export default function Estoque() {
           <table className="w-full min-w-max">
             <thead className="bg-[#07635b]">
               <tr>
-               {['Tipo','Item','Unidade','Entradas','Saídas','Em Estoque','Vlr Unit','Saldo R$','Status',''].map((h,i)=>(
-                <th key={i} className={`th whitespace-nowrap ${h==='Em Estoque'?'text-center':''}`}>{h}</th>
+                {['Tipo','Item','Unidade','Entradas','Saídas','Em Estoque','Vlr Unit','Saldo R$','Status',''].map((h,i)=>(
+                  <th key={i} className="th whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -210,7 +282,7 @@ export default function Estoque() {
                     <td className="td">
                       <div className="flex gap-1 justify-center">
                         <button title="Editar" className="btn-ghost p-1.5"
-                          onClick={()=>{ setEditando(it); setModal(true) }}>
+                          onClick={()=>{ setItemPendente(it); setSenhaModal(true) }}>
                           <Pencil size={14}/>
                         </button>
                         <button title="Remover"
@@ -238,6 +310,10 @@ export default function Estoque() {
       )}
 
       <ItemModal open={modal} onClose={()=>setModal(false)} item={editando} onSave={salvar} tipos={tipos}/>
+      <SenhaModal
+        open={senhaModal}
+        onClose={()=>{ setSenhaModal(false); setItemPendente(null) }}
+        onSuccess={()=>{ setSenhaModal(false); setEditando(itemPendente); setModal(true) }}/>
       <ConfirmModal
         open={!!confirmDel} onClose={()=>setConfirmDel(null)}
         onConfirm={()=>excluir(confirmDel?.id)}
