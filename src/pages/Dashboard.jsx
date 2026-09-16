@@ -11,23 +11,10 @@ const COR_ENT  = '#07635b'
 const COR_SAI  = '#E67E22'
 const COR_ABC  = '#07635b'
 const COR_PCT  = '#5e8e89'
-const DONUT_COLORS = ['#07635b','#5e8e89','#dbf1ef','#E67E22','#C0392B','#8E44AD','#3498DB','#D4AC0D']
+const DONUT_COLORS = ['#07635b','#E67E22','#8E44AD','#3498DB','#C0392B','#D4AC0D','#5e8e89','#16A085','#E91E63','#FF5722']
 
-const fmtDate = d => {
-  if (!d) return '—'
-  const dt = new Date(d)
-  if (isNaN(dt)) return String(d).slice(0,10).split('-').reverse().join('/')
-  return `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}/${dt.getUTCFullYear()}`
-}
-
-const fmtHora = s => {
-  if (!s) return '—'
-  const dt = new Date(s)
-  if (isNaN(dt)) return '—'
-  const h = String(dt.getUTCHours()).padStart(2,'0')
-  const m = String(dt.getUTCMinutes()).padStart(2,'0')
-  return h === '00' && m === '00' ? '—' : `${h}:${m}`
-}
+const fmtDate  = d => d ? d.split('-').reverse().join('/') : '—'
+const fmtHora  = s => { if (!s) return '—'; const t = s.includes('T') ? s : s.replace(' ','T'); const d = new Date(t); return isNaN(d)?'—':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` }
 const fmtMoeda = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2 })}`
 
 const EMPTY_DATA = {
@@ -185,14 +172,15 @@ export default function Dashboard() {
 
           {/* Composição do estoque - Donut */}
           <div className="card p-5">
-            <SectionTitle>🍩 Composição do Estoque por Tipo (R$)</SectionTitle>
+            <SectionTitle>🍩 Composição do Estoque por Tipo (Qtd)</SectionTitle>
             {!data.composicaoEstoque?.length
               ? <p className="text-slate-400 text-sm py-8 text-center">Sem valor em estoque.</p>
               : <>
                   <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie
-                        data={data.composicaoEstoque} dataKey="valor" nameKey="tipo"
+                        data={data.composicaoEstoque.map(d=>({...d, quantidade: Number(d.quantidade||0)}))}
+                        dataKey="quantidade" nameKey="tipo"
                         cx="50%" cy="50%" innerRadius={55} outerRadius={95}
                         labelLine={false} label={donutLabel}
                       >
@@ -200,19 +188,19 @@ export default function Dashboard() {
                           <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={v => [fmtMoeda(v), 'Valor']} />
+                      <Tooltip formatter={(v, n, p) => [`${Math.round(v)} unid.`, p.payload.tipo]} />
                       <Legend wrapperStyle={{ fontSize:11 }} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="mt-2 flex flex-col gap-1">
-                    {data.composicaoEstoque.map((c, i) => (
-                      <div key={c.tipo} className="flex items-center justify-between text-xs">
+                    {data.composicaoEstoque.map((item, i) => (
+                      <div key={item.tipo} className="flex items-center justify-between text-xs">
                         <span className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-full inline-block"
                             style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                          {c.tipo}
+                          {item.tipo}
                         </span>
-                        <span className="font-semibold text-slate-600">{fmtMoeda(c.valor)}</span>
+                        <span className="font-semibold text-slate-600">{Math.round(Number(item.quantidade||0))} unid.</span>
                       </div>
                     ))}
                   </div>
@@ -263,7 +251,7 @@ export default function Dashboard() {
               : data.movs.map((m, i) => (
                   <tr key={i} className="trow">
                     <td className="td font-mono text-xs text-slate-500 whitespace-nowrap">
-                      {fmtDate(m.criado_em || m.data)}{fmtHora(m.criado_em) !== '—' ? ` ${fmtHora(m.criado_em)}` : ''}
+                      {fmtDate(m.data)} {fmtHora(m.criado_em)}
                     </td>
                     <td className="td">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold

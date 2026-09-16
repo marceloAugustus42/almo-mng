@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Download, Pencil, Plus, Check, X, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
-import { Table, Empty, Spinner, PeriodFilter, Modal, toast } from '../components/UI'
+import { Table, Empty, Spinner, PeriodFilter, toast } from '../components/UI'
+import { useAdmin } from '../components/AdminContext'
 import { exportPorDestino } from '../lib/export'
 
 const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 
 const DESTINOS_KEY = 'almoxa_destinos'
-const SENHA_ADMIN  = 'mikeobrabo'
-
 const hoje = () => new Date().toISOString().slice(0, 10)
 const anoAtual = () => new Date().getFullYear()
 const periodoInicial = () => ({ de: `${anoAtual()}-01-01`, ate: hoje() })
@@ -30,36 +29,8 @@ function saveDestinos(lista) {
 }
 
 // Modal de autenticação
-function SenhaModal({ open, onClose, onSuccess }) {
-  const [senha, setSenha] = useState('')
-  const [erro, setErro] = useState(false)
-
-  function confirmar() {
-    if (senha === SENHA_ADMIN) { setSenha(''); setErro(false); onSuccess() }
-    else { setErro(true); setSenha('') }
-  }
-
-  return (
-    <Modal open={open} onClose={() => { setSenha(''); setErro(false); onClose() }} title="Autenticação" width="max-w-xs">
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-slate-500">Digite a senha para gerenciar destinos.</p>
-        <input
-          type="password" className={`input ${erro ? 'border-red-400' : ''}`}
-          placeholder="Senha" value={senha} autoFocus
-          onChange={e => { setSenha(e.target.value); setErro(false) }}
-          onKeyDown={e => e.key === 'Enter' && confirmar()}
-        />
-        {erro && <p className="text-xs text-red-500 -mt-2">Senha incorreta.</p>}
-        <div className="flex gap-2 justify-end">
-          <button className="btn-secondary" onClick={() => { setSenha(''); setErro(false); onClose() }}>Cancelar</button>
-          <button className="btn-primary" onClick={confirmar}>Confirmar</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
 export default function Destinos() {
+  const { pedirSenha } = useAdmin()
   const [destinos, setDestinos] = useState(getDestinos)
   const [destino, setDestino]   = useState(() => getDestinos()[0] || '')
   const [saidas, setSaidas]     = useState([])
@@ -68,8 +39,6 @@ export default function Destinos() {
   const [periodo, setPeriodo]   = useState(periodoInicial)
 
   // Estados de edição
-  const [senhaModal, setSenhaModal]     = useState(false)
-  const [acaoAposSenha, setAcaoAposSenha] = useState(null) // fn a executar após autenticar
   const [editando, setEditando]         = useState(null)   // nome sendo editado
   const [nomeEdit, setNomeEdit]         = useState('')
   const [novoNome, setNovoNome]         = useState('')
@@ -95,16 +64,7 @@ export default function Destinos() {
   }, [destinos])
 
   // ── Ações protegidas por senha ──────────────────────────────────────────
-  function pedirSenha(acao) {
-    setAcaoAposSenha(() => acao)
-    setSenhaModal(true)
-  }
 
-  function onSenhaOk() {
-    setSenhaModal(false)
-    acaoAposSenha?.()
-    setAcaoAposSenha(null)
-  }
 
   function iniciarEdicao(nome) {
     pedirSenha(() => { setEditando(nome); setNomeEdit(nome) })
@@ -328,8 +288,6 @@ export default function Destinos() {
         )}
       </div>
 
-      {/* Modal de senha */}
-      <SenhaModal open={senhaModal} onClose={() => setSenhaModal(false)} onSuccess={onSenhaOk} />
     </div>
   )
 }

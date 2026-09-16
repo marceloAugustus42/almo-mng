@@ -57,10 +57,12 @@ class DashboardModel extends BaseModel {
   }
 
   async getComposicaoEstoque() {
-    return this.query(
-      `SELECT tipo, ROUND(SUM(saldo * vlr_unit), 2) AS valor
-       FROM vw_saldos WHERE saldo > 0 GROUP BY tipo ORDER BY valor DESC`)
-  }
+  return this.query(
+    `SELECT tipo,
+       SUM(saldo) AS quantidade,
+       ROUND(SUM(saldo * vlr_unit), 2) AS valor
+     FROM vw_saldos WHERE saldo > 0 GROUP BY tipo ORDER BY quantidade DESC`)
+}
 
   async getEstoqueParado() {
     // Usa subquery para última saída — evita JOIN que distorce saldos

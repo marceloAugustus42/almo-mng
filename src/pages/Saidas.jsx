@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle } from 'lucide-react'
 import { api, getDestinos } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
+import { useAdmin, AdminButton } from '../components/AdminContext'
 
 const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 const today   = () => new Date().toISOString().slice(0,10)
@@ -23,6 +24,7 @@ export default function Saidas() {
   const [busca, setBusca]       = useState('')
   const [filtroDest, setFiltroDest] = useState('')
   const [periodo, setPeriodo]   = useState({ de:'', ate:'' })
+  const { ativo: modoAdmin } = useAdmin()
   const [confirmDel, setConfirmDel] = useState(null)
   const [destinos] = useState(getDestinos)
 
@@ -177,7 +179,7 @@ export default function Saidas() {
             <div className="hidden sm:grid grid-cols-12 gap-2 px-2">
               <span className="col-span-6 label">Item</span>
               <span className="col-span-4 label">Quantidade</span>
-              <span className="col-span-2 label">Em Estoque</span>
+              <span className="col-span-2 label">Saldo</span>
             </div>
 
             {linhas.map((linha, idx) => {
@@ -256,7 +258,7 @@ export default function Saidas() {
 
       {loading ? <Spinner /> : (
         <Table
-          cols={['Data','Pedido','Item','Qtd','Destino','Solicitante','Responsável','Obs','']}
+          cols={['Data','Pedido','Item','Qtd','Destino','Solicitante','Responsável','Obs',...(modoAdmin?['']:[])]}
           footer={
             <tr>
               <td colSpan={3} className="td font-bold text-right">Total ({filtered.length} registros)</td>
@@ -279,17 +281,20 @@ export default function Saidas() {
               <td className="td text-slate-500">{s.solicitante || '—'}</td>
               <td className="td text-slate-500">{s.responsavel || '—'}</td>
               <td className="td text-slate-400 text-xs">{s.obs || ''}</td>
-              <td className="td">
-                <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                  onClick={() => setConfirmDel(s)}>
-                  <Trash2 size={14} />
-                </button>
-              </td>
+              {modoAdmin && (
+                <td className="td">
+                  <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    onClick={() => setConfirmDel(s)}>
+                    <Trash2 size={14} />
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </Table>
       )}
 
+      <AdminButton />
       <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
         onConfirm={() => excluir(confirmDel?.id)}
         title="Remover Saída"

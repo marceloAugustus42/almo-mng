@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Search, X, PackagePlus } from 'lucide-react'
 import { api } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
+import { useAdmin, AdminButton } from '../components/AdminContext'
 
 const fmtDate  = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 const today    = () => new Date().toISOString().slice(0,10)
@@ -20,6 +21,7 @@ export default function Entradas() {
   const [saving, setSaving]     = useState(false)
   const [busca, setBusca]       = useState('')
   const [periodo, setPeriodo]   = useState({ de:'', ate:'' })
+  const { ativo: modoAdmin } = useAdmin()
   const [confirmDel, setConfirmDel] = useState(null)
   const [tipos, setTipos]       = useState(getTipos)
 
@@ -269,7 +271,7 @@ export default function Entradas() {
 
       {loading ? <Spinner/> : (
         <Table
-          cols={['Data','NF','Fornecedor','Item','Qtd','Vlr Unit','Vlr Total','Responsável','Obs','']}
+          cols={['Data','NF','Fornecedor','Item','Qtd','Vlr Unit','Vlr Total','Responsável','Obs',...(modoAdmin?['']:[])]}
           footer={
             <tr>
               <td colSpan={4} className="td font-bold text-right">Total ({filtered.length})</td>
@@ -290,15 +292,18 @@ export default function Entradas() {
               <td className="td text-center font-medium">R$ {(Number(e.quantidade)*Number(e.vlr_unit||0)).toFixed(2)}</td>
               <td className="td text-slate-500">{e.responsavel||'—'}</td>
               <td className="td text-slate-400 text-xs">{e.obs||''}</td>
-              <td className="td">
-                <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                  onClick={()=>setConfirmDel(e)}><Trash2 size={14}/></button>
-              </td>
+              {modoAdmin && (
+                <td className="td">
+                  <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    onClick={()=>setConfirmDel(e)}><Trash2 size={14}/></button>
+                </td>
+              )}
             </tr>
           ))}
         </Table>
       )}
 
+      <AdminButton />
       <ConfirmModal open={!!confirmDel} onClose={()=>setConfirmDel(null)}
         onConfirm={()=>excluir(confirmDel?.id)}
         title="Remover Entrada"

@@ -240,12 +240,12 @@ function mockFallback(method, path, body) {
         return { nome: db.itens.find(i=>i.id===parseInt(id))?.nome||'', qtd, pct: totalConsumo>0?+((acumulado/totalConsumo)*100).toFixed(1):0 }
       })
 
-    const tipoMap = {}
-    saldos.forEach(s => { tipoMap[s.tipo] = (tipoMap[s.tipo]||0)+(s.saldo||0)*(s.vlr_unit||0) })
-    const composicaoEstoque = Object.entries(tipoMap)
-      .filter(([,v])=>v>0)
-      .map(([tipo,valor]) => ({ tipo, valor:+valor.toFixed(2) }))
-      .sort((a,b)=>b.valor-a.valor)
+    const tipoQtdMap = {}
+saldos.forEach(s => { tipoQtdMap[s.tipo] = (tipoQtdMap[s.tipo]||0)+Number(s.saldo||0) })
+const composicaoEstoque = Object.entries(tipoQtdMap)
+  .filter(([,v])=>v>0)
+  .map(([tipo,quantidade]) => ({ tipo, quantidade, valor: 0 }))
+  .sort((a,b)=>b.quantidade-a.quantidade)
 
     const hoje = new Date().toISOString().slice(0,10)
     const parado = saldos
