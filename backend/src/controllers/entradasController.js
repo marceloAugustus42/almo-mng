@@ -17,6 +17,13 @@ const entradasController = {
     res.status(201).json(entrada)
   },
 
+  async update(req, res) {
+    const e = await Entrada.findById(req.params.id)
+    if (!e) return res.status(404).json({ error: 'Entrada não encontrada.' })
+    const atualizada = await Entrada.update(req.params.id, req.body)
+    res.json(atualizada)
+  },
+
   async remove(req, res) {
     const ok = await Entrada.delete(req.params.id)
     if (!ok) return res.status(404).json({ error: 'Entrada não encontrada.' })

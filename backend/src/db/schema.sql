@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS itens (
   tipo      VARCHAR(60)  NOT NULL,
   unidade   VARCHAR(40)  NOT NULL,
   vlr_unit  DECIMAL(10,2) DEFAULT 0.00,
+  estoque   ENUM('PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL') DEFAULT 'PATRIMÔNIO',
   ativo     TINYINT(1)   DEFAULT 1,
   criado_em DATETIME     DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_nome (nome)
@@ -41,20 +42,15 @@ CREATE TABLE IF NOT EXISTS saidas (
   FOREIGN KEY (item_id) REFERENCES itens(id) ON DELETE RESTRICT
 );
 
--- View corrigida: subqueries separadas evitam produto cartesiano
--- O bug anterior (JOIN duplo) multiplicava entradas pelo nº de saídas e vice-versa
+-- Saldo calculado por item (usada nas queries de estoque e dashboard)
 CREATE OR REPLACE VIEW vw_saldos AS
 SELECT
-  i.id,
-  i.nome,
-  i.tipo,
-  i.unidade,
-  i.vlr_unit,
-  i.ativo,
-  i.criado_em,
-  COALESCE((SELECT SUM(e.quantidade) FROM entradas e WHERE e.item_id = i.id), 0) AS total_entradas,
-  COALESCE((SELECT SUM(s.quantidade) FROM saidas   s WHERE s.item_id = i.id), 0) AS total_saidas,
-  COALESCE((SELECT SUM(e.quantidade) FROM entradas e WHERE e.item_id = i.id), 0)
-  - COALESCE((SELECT SUM(s.quantidade) FROM saidas s WHERE s.item_id = i.id), 0) AS saldo
+  i.id, i.nome, i.tipo, i.unidade, i.vlr_unit, i.estoque, i.ativo, i.criado_em,
+  COALESCE(SUM(e.quantidade), 0)                                          AS total_entradas,
+  COALESCE(SUM(s.quantidade), 0)                                          AS total_saidas,
+  COALESCE(SUM(e.quantidade),0) - COALESCE(SUM(s.quantidade),0)          AS saldo
 FROM itens i
-WHERE i.ativo = 1;
+LEFT JOIN entradas e ON e.item_id = i.id
+LEFT JOIN saidas   s ON s.item_id = i.id
+WHERE i.ativo = 1
+GROUP BY i.id, i.nome, i.tipo, i.unidade, i.vlr_unit, i.ativo, i.criado_em;

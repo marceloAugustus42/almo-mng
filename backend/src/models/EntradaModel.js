@@ -17,6 +17,14 @@ class EntradaModel extends BaseModel {
     return this.query(sql, params)
   }
 
+  async update(id, { item_id, data, nf, fornecedor, quantidade, vlr_unit, responsavel, obs }) {
+    await this.query(
+      `UPDATE entradas SET item_id=?, data=?, nf=?, fornecedor=?, quantidade=?, vlr_unit=?, responsavel=?, obs=? WHERE id=?`,
+      [item_id, data, nf||null, fornecedor||null, quantidade, vlr_unit||0, responsavel||null, obs||null, id]
+    )
+    return this.findById(id)
+  }
+
   async create({ item_id, data, nf, fornecedor, quantidade, vlr_unit = 0, responsavel, obs }) {
     const result = await this.query(
       `INSERT INTO entradas (item_id, data, nf, fornecedor, quantidade, vlr_unit, responsavel, obs)

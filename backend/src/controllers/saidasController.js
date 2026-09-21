@@ -17,6 +17,13 @@ const saidasController = {
     res.status(201).json(saida)
   },
 
+  async update(req, res) {
+    const s = await Saida.findById(req.params.id)
+    if (!s) return res.status(404).json({ error: 'Saída não encontrada.' })
+    const atualizada = await Saida.update(req.params.id, req.body)
+    res.json(atualizada)
+  },
+
   async remove(req, res) {
     const ok = await Saida.delete(req.params.id)
     if (!ok) return res.status(404).json({ error: 'Saída não encontrada.' })

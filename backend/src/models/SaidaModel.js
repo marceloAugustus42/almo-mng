@@ -18,6 +18,14 @@ class SaidaModel extends BaseModel {
     return this.query(sql, params)
   }
 
+  async update(id, { item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs }) {
+    await this.query(
+      `UPDATE saidas SET item_id=?, data=?, pedido=?, destino=?, quantidade=?, solicitante=?, responsavel=?, obs=? WHERE id=?`,
+      [item_id, data, pedido||null, destino, quantidade, solicitante||null, responsavel||null, obs||null, id]
+    )
+    return this.findById(id)
+  }
+
   async create({ item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs }) {
     const result = await this.query(
       `INSERT INTO saidas (item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs)

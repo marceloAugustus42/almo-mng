@@ -16,11 +16,13 @@ router.delete('/itens/:id',   wrap(itens.remove))
 // Entradas
 router.get   ('/entradas',    wrap(entradas.list))
 router.post  ('/entradas',    wrap(entradas.create))
+router.put   ('/entradas/:id',wrap(entradas.update))
 router.delete('/entradas/:id',wrap(entradas.remove))
 
 // Saídas
 router.get   ('/saidas',      wrap(saidas.list))
 router.post  ('/saidas',      wrap(saidas.create))
+router.put   ('/saidas/:id',  wrap(saidas.update))
 router.delete('/saidas/:id',  wrap(saidas.remove))
 
 // Dashboard

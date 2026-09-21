@@ -54,8 +54,8 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
   const [ajuste, setAjuste] = useState('')
   useEffect(() => {
     setForm(item
-      ? { nome:item.nome, tipo:item.tipo, unidade:item.unidade, vlr_unit:item.vlr_unit||'' }
-      : { nome:'', tipo: tipos[0]||'Limpeza', unidade:'Unidade', vlr_unit:'' })
+      ? { nome:item.nome, tipo:item.tipo, unidade:item.unidade, vlr_unit:item.vlr_unit||'', estoque:item.estoque||'PATRIMÔNIO' }
+      : { nome:'', tipo: tipos[0]||'Limpeza', unidade:'Unidade', vlr_unit:'', estoque:abaEstoque||'PATRIMÔNIO' })
     setAjuste('')
   }, [item, open])
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
@@ -83,6 +83,11 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
             </select>
           </Field>
         </div>
+        <Field label="Estoque" required>
+          <select className="input" value={form.estoque||'PATRIMÔNIO'} onChange={e=>set('estoque',e.target.value)}>
+            {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op=><option key={op}>{op}</option>)}
+          </select>
+        </Field>
         <Field label="Valor Unitário (R$)">
           <input type="number" step="0.01" min="0" className="input" value={form.vlr_unit}
             placeholder="0,00"
@@ -125,7 +130,9 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
 
 export default function Estoque() {
   const [itens, setItens]       = useState([])
+  const ESTOQUES = ['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL']
   const { ativo: modoAdmin, pedirSenha } = useAdmin()
+  const [abaEstoque, setAbaEstoque] = useState('PATRIMÔNIO')
   const [tipos, setTipos]       = useState(getTipos)
   const [loading, setLoading]   = useState(true)
   const [busca, setBusca]       = useState('')
@@ -209,6 +216,7 @@ export default function Estoque() {
   const saldoValor = i => (Number(i.saldo)||0) * (Number(i.vlr_unit)||0)
 
   const filtered = itens
+    .filter(i => (i.estoque || 'PATRIMÔNIO') === abaEstoque)
     .filter(i => !busca || i.nome.toLowerCase().includes(busca.toLowerCase()))
     .filter(i => !filtroTipo || i.tipo === filtroTipo)
     .sort((a,b) => {
@@ -234,6 +242,16 @@ export default function Estoque() {
           onClick={()=>{ setEditando(null); setModal(true) }}>
           <Plus size={16}/> Cadastrar Item
         </button>
+      </div>
+
+      {/* Tabs de estoque */}
+      <div className="flex gap-2 border-b border-slate-200">
+        {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(e=>(
+          <button key={e} onClick={()=>setAbaEstoque(e)}
+            className={`px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${abaEstoque===e?'border-[#07635b] text-[#07635b] bg-[#dbf1ef]':'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            {e}
+          </button>
+        ))}
       </div>
 
       {/* Filtros */}
@@ -279,7 +297,7 @@ export default function Estoque() {
                     <td className="td text-center text-slate-500">R$ {Number(it.vlr_unit||0).toFixed(2)}</td>
                     <td className="td text-center font-medium">R$ {Number(sv).toFixed(2)}</td>
                     <td className="td text-center"><StatusBadge saldo={it.saldo||0}/></td>
-                    <td className="td">
+                    {modoAdmin && (<td className="td">
                       <div className="flex gap-1 justify-center">
                         <button title="Editar" className="btn-ghost p-1.5"
                           onClick={()=>{ setEditando(it); setModal(true) }}>
@@ -291,7 +309,7 @@ export default function Estoque() {
                           <Trash2 size={14}/>
                         </button>
                       </div>
-                    </td>
+                    </td>)}
                   </tr>
                 )
               })}
@@ -309,7 +327,7 @@ export default function Estoque() {
         </div>
       )}
 
-      <ItemModal open={modal} onClose={()=>setModal(false)} item={editando} onSave={salvar} tipos={tipos}/>
+      <ItemModal open={modal} onClose={()=>setModal(false)} item={editando} onSave={salvar} tipos={tipos} abaEstoque={abaEstoque}/>
       <AdminButton />
       <ConfirmModal
         open={!!confirmDel} onClose={()=>setConfirmDel(null)}

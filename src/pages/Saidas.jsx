@@ -1,31 +1,37 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle } from 'lucide-react'
+import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle, Edit2 } from 'lucide-react'
 import { api, getDestinos } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 import { useAdmin, AdminButton } from '../components/AdminContext'
+import { exportSaidasRelatorio } from '../lib/export'
 
-const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
-const today   = () => new Date().toISOString().slice(0,10)
+const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0, 10); const [y, m, di] = s.split('-'); return `${di}/${m}/${y}` }
+const today = () => new Date().toISOString().slice(0, 10)
 const ITEM_VAZIO = { item_id: '', quantidade: '' }
 
 // Gera número de pedido automático
 function gerarPedido(saidas) {
-  const d   = new Date()
-  const base = `PED-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`
-  const seq  = String(saidas.filter(s => s.pedido?.startsWith(base)).length + 1).padStart(3,'0')
-  return `${base}-${seq}`
+  const d = new Date()
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  const base = 'PED-' + ano + mes + dia
+  const seq = String(saidas.filter(s => s.pedido?.startsWith(base)).length + 1).padStart(3, '0')
+  return base + '-' + seq
 }
 
 export default function Saidas() {
-  const [itens, setItens]       = useState([])
-  const [saidas, setSaidas]     = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [busca, setBusca]       = useState('')
+  const [itens, setItens] = useState([])
+  const [saidas, setSaidas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [busca, setBusca] = useState('')
   const [filtroDest, setFiltroDest] = useState('')
-  const [periodo, setPeriodo]   = useState({ de:'', ate:'' })
+  const [periodo, setPeriodo] = useState({ de: '', ate: '' })
   const { ativo: modoAdmin } = useAdmin()
   const [confirmDel, setConfirmDel] = useState(null)
+  const [editandoItem, setEditandoItem] = useState(null)
+  const [formEdit, setFormEdit] = useState({})
   const [destinos] = useState(getDestinos)
 
   const [cab, setCab] = useState({
@@ -48,9 +54,9 @@ export default function Saidas() {
   const loadSaidas = useCallback(() => {
     setLoading(true)
     let path = '/saidas?'
-    if (periodo.de)  path += `de=${periodo.de}&`
+    if (periodo.de) path += `de=${periodo.de}&`
     if (periodo.ate) path += `ate=${periodo.ate}&`
-    if (filtroDest)  path += `destino=${encodeURIComponent(filtroDest)}&`
+    if (filtroDest) path += `destino=${encodeURIComponent(filtroDest)}&`
     api.get(path).then(setSaidas).finally(() => setLoading(false))
   }, [periodo, filtroDest])
 
@@ -82,8 +88,8 @@ export default function Saidas() {
     // Valida saldo — BLOQUEIA se insuficiente (não pergunta, apenas avisa)
     for (const l of validas) {
       const itemAtual = itensAtuais.find(i => i.id === l.item_id)
-      const saldo     = Math.round(Number(itemAtual?.saldo) || 0)
-      const qtd       = parseInt(l.quantidade)
+      const saldo = Math.round(Number(itemAtual?.saldo) || 0)
+      const qtd = parseInt(l.quantidade)
       if (qtd > saldo) {
         const nome = itemAtual?.nome || 'Item'
         toast(`Saldo insuficiente para "${nome}": disponível ${saldo}, solicitado ${qtd}.`, 'error')
@@ -96,7 +102,7 @@ export default function Saidas() {
       for (const l of validas) {
         await api.post('/saidas', {
           ...cab,
-          item_id:    l.item_id,
+          item_id: l.item_id,
           quantidade: parseInt(l.quantidade),
         })
       }
@@ -113,6 +119,25 @@ export default function Saidas() {
     }
   }
 
+  async function salvarEdicao() {
+    if (!editandoItem) return
+    await api.put(`/saidas/${editandoItem.id}`, {
+      item_id: editandoItem.item_id,
+      data: formEdit.data ?? String(editandoItem.data).slice(0, 10),
+      pedido: editandoItem.pedido ?? '',
+      destino: formEdit.destino ?? editandoItem.destino,
+      quantidade: parseInt(formEdit.quantidade ?? editandoItem.quantidade),
+      solicitante: formEdit.solicitante ?? editandoItem.solicitante ?? '',
+      responsavel: formEdit.responsavel ?? editandoItem.responsavel ?? '',
+      obs: formEdit.obs ?? editandoItem.obs ?? '',
+    })
+    toast('Saída atualizada!')
+    setEditandoItem(null)
+    setFormEdit({})
+    loadSaidas()
+    loadItens()
+  }
+
   async function excluir(id) {
     await api.delete(`/saidas/${id}`)
     toast('Saída removida.', 'warn')
@@ -126,6 +151,7 @@ export default function Saidas() {
     s.destino?.toLowerCase().includes(busca.toLowerCase())
   )
   const totQtd = filtered.reduce((s, e) => s + Number(e.quantidade), 0)
+  const totVlr = filtered.reduce((s, e) => s + Number(e.quantidade) * Number(e.vlr_unit || 0), 0)
 
   return (
     <div className="flex flex-col gap-5 p-6 max-w-screen-xl mx-auto">
@@ -183,13 +209,13 @@ export default function Saidas() {
             </div>
 
             {linhas.map((linha, idx) => {
-              const saldo  = getSaldo(linha.item_id)
-              const qtd    = parseInt(linha.quantidade) || 0
-              const insuf  = saldo !== null && qtd > saldo
-              const saldoCor = saldo === null   ? 'text-slate-400'
-                             : saldo <= 0       ? 'text-red-600'
-                             : saldo <= 5       ? 'text-amber-500'
-                                                : 'text-emerald-600'
+              const saldo = getSaldo(linha.item_id)
+              const qtd = parseInt(linha.quantidade) || 0
+              const insuf = saldo !== null && qtd > saldo
+              const saldoCor = saldo === null ? 'text-slate-400'
+                : saldo <= 0 ? 'text-red-600'
+                  : saldo <= 5 ? 'text-amber-500'
+                    : 'text-emerald-600'
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-lg p-2">
                   <div className="col-span-12 sm:col-span-6">
@@ -240,7 +266,13 @@ export default function Saidas() {
 
       {/* Filtros histórico */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="section-title">Histórico de Saídas</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="section-title">Histórico de Saídas</h2>
+          <button className="btn-secondary flex items-center gap-1.5 !py-1 !text-xs"
+            onClick={() => exportSaidasRelatorio(filtered, periodo)}>
+            ⬇ Exportar período (.xlsx)
+          </button>
+        </div>
         <div className="flex gap-3 flex-wrap items-center">
           <PeriodFilter de={periodo.de} ate={periodo.ate} onChange={setPeriodo} />
           <select className="input !py-1.5 !text-xs w-44" value={filtroDest}
@@ -258,12 +290,14 @@ export default function Saidas() {
 
       {loading ? <Spinner /> : (
         <Table
-          cols={['Data','Pedido','Item','Qtd','Destino','Solicitante','Responsável','Obs',...(modoAdmin?['']:[])]}
+          cols={['Data', 'Pedido', 'Item', 'Qtd', 'Destino', 'Vlr Total', 'Solicitante', 'Responsável', 'Obs', ...(modoAdmin ? ['Ações'] : [])]}
           footer={
             <tr>
               <td colSpan={3} className="td font-bold text-right">Total ({filtered.length} registros)</td>
               <td className="td text-center font-black text-orange-600">{Math.round(totQtd)}</td>
-              <td colSpan={5} className="td" />
+              <td colSpan={3} className="td" />
+              <td className="td text-center font-bold text-slate-600">R$ {Number(totVlr).toFixed(2)}</td>
+              <td colSpan={modoAdmin ? 3 : 2} className="td" />
             </tr>
           }
         >
@@ -278,15 +312,18 @@ export default function Saidas() {
                   {s.destino}
                 </span>
               </td>
+              <td className="td text-center text-slate-600">R$ {(Number(s.quantidade) * Number(s.vlr_unit || 0)).toFixed(2)}</td>
               <td className="td text-slate-500">{s.solicitante || '—'}</td>
               <td className="td text-slate-500">{s.responsavel || '—'}</td>
               <td className="td text-slate-400 text-xs">{s.obs || ''}</td>
               {modoAdmin && (
                 <td className="td">
-                  <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                    onClick={() => setConfirmDel(s)}>
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button className="p-1.5 rounded-lg text-[#07635b] hover:bg-[#dbf1ef] transition-colors" title="Editar"
+                      onClick={() => { setEditandoItem(s); setFormEdit({}) }}><Edit2 size={14} /></button>
+                    <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors" title="Excluir"
+                      onClick={() => setConfirmDel(s)}><Trash2 size={14} /></button>
+                  </div>
                 </td>
               )}
             </tr>
@@ -294,6 +331,28 @@ export default function Saidas() {
         </Table>
       )}
 
+      {editandoItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditandoItem(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+            <h2 className="text-lg font-bold">Editar Saída — {editandoItem.item_nome}</h2>
+            <Field label="Data"><input type="date" className="input" defaultValue={String(editandoItem.data).slice(0, 10)} onChange={e => setFormEdit(f => ({ ...f, data: e.target.value }))} /></Field>
+            <Field label="Destino">
+              <select className="input" defaultValue={editandoItem.destino} onChange={e => setFormEdit(f => ({ ...f, destino: e.target.value }))}>
+                {destinos.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </Field>
+            <Field label="Quantidade"><input type="number" min="1" step="1" className="input" defaultValue={editandoItem.quantidade} onChange={e => setFormEdit(f => ({ ...f, quantidade: e.target.value }))} /></Field>
+            <Field label="Solicitante"><input className="input" defaultValue={editandoItem.solicitante || ''} onChange={e => setFormEdit(f => ({ ...f, solicitante: e.target.value }))} /></Field>
+            <Field label="Responsável"><input className="input" defaultValue={editandoItem.responsavel || ''} onChange={e => setFormEdit(f => ({ ...f, responsavel: e.target.value }))} /></Field>
+            <Field label="Observações"><input className="input" defaultValue={editandoItem.obs || ''} onChange={e => setFormEdit(f => ({ ...f, obs: e.target.value }))} /></Field>
+            <div className="flex gap-2 justify-end pt-2">
+              <button className="btn-secondary" onClick={() => setEditandoItem(null)}>Cancelar</button>
+              <button className="btn-primary" onClick={salvarEdicao}>Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
       <AdminButton />
       <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
         onConfirm={() => excluir(confirmDel?.id)}

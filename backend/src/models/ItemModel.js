@@ -13,18 +13,18 @@ class ItemModel extends BaseModel {
     return row || null
   }
 
-  async create({ nome, tipo, unidade, vlr_unit = 0 }) {
+  async create({ nome, tipo, unidade, vlr_unit = 0, estoque = 'PATRIMÔNIO' }) {
     const result = await this.query(
-      'INSERT INTO itens (nome, tipo, unidade, vlr_unit) VALUES (?, ?, ?, ?)',
-      [nome, tipo, unidade, vlr_unit]
+      'INSERT INTO itens (nome, tipo, unidade, vlr_unit, estoque) VALUES (?, ?, ?, ?, ?)',
+      [nome, tipo, unidade, vlr_unit, estoque]
     )
     return this.findById(result.insertId)
   }
 
-  async update(id, { nome, tipo, unidade, vlr_unit }) {
+  async update(id, { nome, tipo, unidade, vlr_unit, estoque = 'PATRIMÔNIO' }) {
     await this.query(
-      'UPDATE itens SET nome=?, tipo=?, unidade=?, vlr_unit=? WHERE id=?',
-      [nome, tipo, unidade, vlr_unit, id]
+      'UPDATE itens SET nome=?, tipo=?, unidade=?, vlr_unit=?, estoque=? WHERE id=?',
+      [nome, tipo, unidade, vlr_unit, estoque, id]
     )
     return this.findById(id)
   }
