@@ -7,6 +7,7 @@ import { useAdmin, AdminButton } from '../components/AdminContext'
 const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0, 10); const [y, m, di] = s.split('-'); return `${di}/${m}/${y}` }
 const today = () => new Date().toISOString().slice(0, 10)
 
+const ESTOQUE = ['PATROMONIO', 'CALAMIDADE', 'CEGONHA SOCIAL']
 const UNIDADES = ['Unidade', 'Pacote', 'Caixa', 'Resma', 'Litro', 'Kg', 'Par', 'Rolo', 'Frasco']
 const TIPOS_KEY = 'almoxa_tipos'
 const TIPOS_PAD = ['Limpeza', 'Higiene', 'Escritório', 'Uniforme', 'Equipamento', 'Outros']
@@ -32,6 +33,10 @@ export default function Entradas() {
 
   const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
   const setLinha = (idx, k, v) => setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, [k]: v } : l))
+
+  const [estoqueEntrada, setEstoqueEntrada] = useState('PATRIMÔNIO')
+
+  const itensFiltrados = itens.filter(i => (i.estoque || 'PATRIMÔNIO') === estoqueEntrada)
 
   // Ao marcar "novo cadastro", limpa o item selecionado
   const toggleNovo = (idx, checked) =>
@@ -95,7 +100,7 @@ export default function Entradas() {
             setSaving(false); return
           }
           const tipo = l.novoTipo && l.tipoNovo?.trim() ? l.tipoNovo.trim() : (l.tipo || tipos[0])
-          const novo = await api.post('/itens', { nome: l.nome, tipo, unidade: l.unidade, vlr_unit: parseFloat(l.vlr_unit) || 0 })
+          const novo = await api.post('/itens',{ nome:l.nome, tipo, unidade:l.unidade, vlr_unit:parseFloat(l.vlr_unit)||0, estoque: estoqueEntrada || 'PATRIMÔNIO' })
           item_id = novo.id
         }
 
@@ -180,6 +185,15 @@ export default function Entradas() {
             </Field>
           </div>
 
+          <Field label="Estoque de Destino" required>
+            <select className="input" value={estoqueEntrada}
+              onChange={e => { setEstoqueEntrada(e.target.value); setLinhas([{ ...LINHA_VAZIA }]) }}>
+              {['PATRIMÔNIO', 'CALAMIDADE', 'CEGONHA SOCIAL'].map(op =>
+                <option key={op}>{op}</option>
+              )}
+            </select>
+          </Field>
+          
           {/* Linhas de itens */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
@@ -197,7 +211,7 @@ export default function Entradas() {
                   {/* Item */}
                   <div className="col-span-12 sm:col-span-5 flex flex-col gap-1.5">
                     {!linha.novo
-                      ? <ItemCombobox itens={itens} value={linha.item_id} onChange={v => handleItemChange(idx, v)} />
+                      ? <ItemCombobox itens={itensFiltrados} value={linha.item_id} onChange={v=>handleItemChange(idx,v)}/>
                       : (
                         <div className="flex flex-col gap-2">
                           <input className="input" placeholder="Nome do item *" value={linha.nome}

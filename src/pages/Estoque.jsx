@@ -49,7 +49,7 @@ const ORDENACOES = [
   { value:'recente_asc',  label:'Mais antigos' },
 ]
 
-function ItemModal({ open, onClose, item, onSave, tipos }) {
+function ItemModal({ open, onClose, item, onSave, tipos, setTipos, abaEstoque }) {
   const [form, setForm] = useState({ nome:'', tipo:'Limpeza', unidade:'Unidade', vlr_unit:'' })
   const [ajuste, setAjuste] = useState('')
   useEffect(() => {
@@ -62,7 +62,7 @@ function ItemModal({ open, onClose, item, onSave, tipos }) {
   async function submit(e) {
     e.preventDefault()
     if (!form.nome.trim()) return
-    await onSave({ ...form, vlr_unit: parseFloat(form.vlr_unit)||0, ajuste: ajuste !== '' ? parseInt(ajuste) : null })
+    await onSave({ nome:form.nome, tipo:form.tipo, unidade:form.unidade, vlr_unit:parseFloat(form.vlr_unit)||0, estoque:form.estoque||'PATRIMÔNIO', ajuste: ajuste !== '' ? parseInt(ajuste) : null })
     onClose()
   }
   return (
@@ -156,7 +156,14 @@ export default function Estoque() {
       const itemAtual  = listaAtual.find(i => i.id === editando.id)
       const saldoAtual = Math.round(Number(itemAtual?.saldo) || 0)
 
-      await api.put(`/itens/${editando.id}`, form)
+      // Envia apenas os campos que o backend conhece (sem ajuste)
+      await api.put(`/itens/${editando.id}`, {
+        nome:     form.nome,
+        tipo:     form.tipo,
+        unidade:  form.unidade,
+        vlr_unit: parseFloat(form.vlr_unit) || 0,
+        estoque:  form.estoque || 'PATRIMÔNIO',
+      })
 
       const ajusteVal = form.ajuste
       if (ajusteVal !== '' && ajusteVal !== null && ajusteVal !== undefined) {
@@ -294,8 +301,8 @@ export default function Estoque() {
                     <td className="td text-center text-emerald-600 font-medium">{Math.round(Number(it.total_entradas)||0)}</td>
                     <td className="td text-center text-orange-500 font-medium">{Math.round(Number(it.total_saidas)||0)}</td>
                     <td className="td text-center font-black text-lg">{Math.round(Number(it.saldo)||0)}</td>
-                    <td className="td text-center text-slate-500">R$ {Number(it.vlr_unit||0).toFixed(2)}</td>
-                    <td className="td text-center font-medium">R$ {Number(sv).toFixed(2)}</td>
+                    <td className="td text-right text-slate-500 font-mono">R$ {Number(it.vlr_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                    <td className="td text-right font-medium font-mono">R$ {Number(sv).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                     <td className="td text-center"><StatusBadge saldo={it.saldo||0}/></td>
                     {modoAdmin && (<td className="td">
                       <div className="flex gap-1 justify-center">
@@ -319,7 +326,7 @@ export default function Estoque() {
                 <td colSpan={5} className="td font-bold text-right">Totais ({filtered.length} itens)</td>
                 <td className="td text-center font-black">{Math.round(Number(totSaldo))}</td>
                 <td className="td"/>
-                <td className="td text-center font-bold">R$ {Number(totValor||0).toFixed(2)}</td>
+                <td className="td text-right font-bold font-mono">R$ {Number(totValor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                 <td colSpan={modoAdmin?2:1} className="td"/>
               </tr>
             </tfoot>

@@ -7,18 +7,19 @@ const itensController = {
   },
 
   async create(req, res) {
-    const { nome, tipo, unidade, vlr_unit } = req.body
+    const { nome, tipo, unidade, vlr_unit, estoque } = req.body
     if (!nome || !tipo || !unidade) return res.status(400).json({ error: 'nome, tipo e unidade são obrigatórios.' })
     const existe = await Item.findByNome(nome)
     if (existe) return res.status(409).json({ error: 'Já existe um item com esse nome.' })
-    const item = await Item.create({ nome, tipo, unidade, vlr_unit })
+    const item = await Item.create({ nome, tipo, unidade, vlr_unit, estoque: estoque || 'PATRIMÔNIO' })
     res.status(201).json(item)
   },
 
   async update(req, res) {
     const item = await Item.findById(req.params.id)
     if (!item) return res.status(404).json({ error: 'Item não encontrado.' })
-    const atualizado = await Item.update(req.params.id, req.body)
+    const { nome, tipo, unidade, vlr_unit, estoque } = req.body
+    const atualizado = await Item.update(req.params.id, { nome, tipo, unidade, vlr_unit, estoque: estoque || 'PATRIMÔNIO' })
     res.json(atualizado)
   },
 
