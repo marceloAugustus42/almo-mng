@@ -4,84 +4,80 @@ import { api } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
 import { useAdmin, AdminButton } from '../components/AdminContext'
 
-const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0, 10); const [y, m, di] = s.split('-'); return `${di}/${m}/${y}` }
-const today = () => new Date().toISOString().slice(0, 10)
+const fmtDate  = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
+const today    = () => new Date().toISOString().slice(0,10)
 
-const ESTOQUE = ['PATROMONIO', 'CALAMIDADE', 'CEGONHA SOCIAL']
-const UNIDADES = ['Unidade', 'Pacote', 'Caixa', 'Resma', 'Litro', 'Kg', 'Par', 'Rolo', 'Frasco']
+const UNIDADES  = ['Unidade','Pacote','Caixa','Resma','Litro','Kg','Par','Rolo','Frasco']
 const TIPOS_KEY = 'almoxa_tipos'
-const TIPOS_PAD = ['Limpeza', 'Higiene', 'Escritório', 'Uniforme', 'Equipamento', 'Outros']
-const getTipos = () => { try { const r = localStorage.getItem(TIPOS_KEY); return r ? JSON.parse(r) : TIPOS_PAD } catch { return TIPOS_PAD } }
+const TIPOS_PAD = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
+const getTipos  = () => { try { const r=localStorage.getItem(TIPOS_KEY); return r?JSON.parse(r):TIPOS_PAD } catch { return TIPOS_PAD } }
 
-const LINHA_VAZIA = { item_id: '', quantidade: '', vlr_unit: '', novo: false, nome: '', tipo: '', unidade: 'Unidade', novoTipo: false, tipoNovo: '' }
+const LINHA_VAZIA = { item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade', novoTipo:false, tipoNovo:'' }
 
 export default function Entradas() {
-  const [itens, setItens] = useState([])
-  const [entradas, setEntradas] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [busca, setBusca] = useState('')
-  const [periodo, setPeriodo] = useState({ de: '', ate: '' })
   const { ativo: modoAdmin } = useAdmin()
+  const [itens, setItens]       = useState([])
+  const [entradas, setEntradas] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [busca, setBusca]       = useState('')
+  const [periodo, setPeriodo]   = useState({ de:'', ate:'' })
   const [confirmDel, setConfirmDel] = useState(null)
   const [editandoItem, setEditandoItem] = useState(null)
   const [formEdit, setFormEdit] = useState({})
-  const [tipos, setTipos] = useState(getTipos)
-
-  const [cab, setCab] = useState({ data: today(), nf: '', fornecedor: '', responsavel: '', obs: '' })
-  const setCabField = (k, v) => setCab(f => ({ ...f, [k]: v }))
-
-  const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
-  const setLinha = (idx, k, v) => setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, [k]: v } : l))
-
+  const [tipos, setTipos]       = useState(getTipos)
   const [estoqueEntrada, setEstoqueEntrada] = useState('PATRIMÔNIO')
 
-  const itensFiltrados = itens.filter(i => (i.estoque || 'PATRIMÔNIO') === estoqueEntrada)
+  const [cab, setCab] = useState({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
+  const setCabField = (k,v) => setCab(f=>({...f,[k]:v}))
 
-  // Ao marcar "novo cadastro", limpa o item selecionado
+  const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
+  const setLinha = (idx,k,v) => setLinhas(ls=>ls.map((l,i)=>i===idx?{...l,[k]:v}:l))
+
   const toggleNovo = (idx, checked) =>
-    setLinhas(ls => ls.map((l, i) => i === idx
-      ? { ...l, novo: checked, item_id: '', nome: '', tipo: tipos[0] || '', unidade: 'Unidade', vlr_unit: '', novoTipo: false, tipoNovo: '' }
+    setLinhas(ls=>ls.map((l,i)=>i===idx
+      ? { ...LINHA_VAZIA, novo:checked, tipo:tipos[0]||'' }
       : l))
 
-  // Ao selecionar item existente, preenche vlr_unit automaticamente
   const handleItemChange = (idx, item_id) => {
-    const item = itens.find(i => i.id === item_id)
-    setLinha(idx, 'item_id', item_id)
-    if (item) setLinha(idx, 'vlr_unit', item.vlr_unit || '')
+    const item = itens.find(i=>i.id===item_id)
+    setLinha(idx,'item_id',item_id)
+    if (item) setLinha(idx,'vlr_unit', item.vlr_unit||'')
   }
 
-  const loadItens = useCallback(() => api.get('/itens').then(setItens), [])
-  const loadEntradas = useCallback(() => {
-    setLoading(true)
-    let path = '/entradas?'
-    if (periodo.de) path += `de=${periodo.de}&`
-    if (periodo.ate) path += `ate=${periodo.ate}&`
-    api.get(path).then(setEntradas).finally(() => setLoading(false))
-  }, [periodo])
+  // Filtra itens pelo estoque selecionado
+  const itensFiltrados = itens.filter(i => (i.estoque||'PATRIMÔNIO') === estoqueEntrada)
 
-  useEffect(() => { loadItens() }, [loadItens])
-  useEffect(() => { loadEntradas() }, [loadEntradas])
+  const loadItens    = useCallback(()=>api.get('/itens').then(setItens),[])
+  const loadEntradas = useCallback(()=>{
+    setLoading(true)
+    let path='/entradas?'
+    if(periodo.de)  path+=`de=${periodo.de}&`
+    if(periodo.ate) path+=`ate=${periodo.ate}&`
+    api.get(path).then(setEntradas).finally(()=>setLoading(false))
+  },[periodo])
+
+  useEffect(()=>{ loadItens() },[loadItens])
+  useEffect(()=>{ loadEntradas() },[loadEntradas])
 
   async function submit(e) {
     e.preventDefault()
 
     const validas = linhas.filter(l => l.novo ? l.nome.trim() : l.item_id)
-    if (!validas.length) { toast('Adicione ao menos um item.', 'error'); return }
+    if (!validas.length) { toast('Adicione ao menos um item.','error'); return }
 
-    // Valida quantidade de cada linha
     for (const l of validas) {
       const qtd = parseInt(l.quantidade)
       if (!l.quantidade || isNaN(qtd) || qtd < 1) {
-        toast('Preencha a quantidade de todos os itens (mínimo 1).', 'error'); return
+        toast('Preencha a quantidade de todos os itens (mínimo 1).','error'); return
       }
     }
 
     setSaving(true)
     try {
-      // Persiste novos tipos no localStorage
+      // Persiste novos tipos
       const tiposAtuais = [...tipos]
-      validas.filter(l => l.novo && l.novoTipo && l.tipoNovo?.trim()).forEach(l => {
+      validas.filter(l=>l.novo&&l.novoTipo&&l.tipoNovo?.trim()).forEach(l=>{
         const t = l.tipoNovo.trim()
         if (!tiposAtuais.includes(t)) tiposAtuais.push(t)
       })
@@ -90,73 +86,80 @@ export default function Entradas() {
         setTipos(tiposAtuais)
       }
 
+      // Registra UMA entrada por linha — sem spread duplo
       for (const l of validas) {
         let item_id = l.item_id
 
-        // Novo item — cadastra primeiro
         if (l.novo) {
-          if (itens.some(i => i.nome.toLowerCase() === l.nome.toLowerCase())) {
-            toast(`"${l.nome}" já existe. Desmarque "Novo cadastro".`, 'error')
+          if (itens.some(i=>i.nome.toLowerCase()===l.nome.toLowerCase())) {
+            toast(`"${l.nome}" já existe. Desmarque "Novo cadastro".`,'error')
             setSaving(false); return
           }
           const tipo = l.novoTipo && l.tipoNovo?.trim() ? l.tipoNovo.trim() : (l.tipo || tipos[0])
-          const novo = await api.post('/itens',{ nome:l.nome, tipo, unidade:l.unidade, vlr_unit:parseFloat(l.vlr_unit)||0, estoque: estoqueEntrada || 'PATRIMÔNIO' })
+          const novo = await api.post('/itens',{
+            nome: l.nome,
+            tipo,
+            unidade:  l.unidade,
+            vlr_unit: parseFloat(l.vlr_unit)||0,
+            estoque:  estoqueEntrada,
+          })
           item_id = novo.id
         }
 
         await api.post('/entradas', {
-          ...cab,
           item_id,
-          quantidade: parseInt(l.quantidade),
-          vlr_unit: parseFloat(l.vlr_unit) || 0,
+          data:        cab.data,
+          nf:          cab.nf,
+          fornecedor:  cab.fornecedor,
+          quantidade:  parseInt(l.quantidade),
+          vlr_unit:    parseFloat(l.vlr_unit)||0,
+          responsavel: cab.responsavel,
+          obs:         cab.obs,
         })
       }
 
       toast(`${validas.length} item(ns) registrado(s)!`)
-      setCab({ data: today(), nf: '', fornecedor: '', responsavel: '', obs: '' })
+      setCab({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
       setLinhas([{ ...LINHA_VAZIA }])
       loadEntradas()
       loadItens()
     } catch {
-      toast('Erro ao registrar entrada.', 'error')
+      toast('Erro ao registrar entrada.','error')
     } finally {
       setSaving(false)
     }
   }
 
+  async function excluir(id) {
+    await api.delete(`/entradas/${id}`)
+    toast('Entrada removida.','warn')
+    loadEntradas(); loadItens()
+  }
+
   async function salvarEdicao() {
     if (!editandoItem) return
     await api.put(`/entradas/${editandoItem.id}`, {
-      item_id: editandoItem.item_id,
-      data: formEdit.data ?? String(editandoItem.data).slice(0, 10),
-      nf: formEdit.nf ?? editandoItem.nf ?? '',
-      fornecedor: formEdit.fornecedor ?? editandoItem.fornecedor ?? '',
-      quantidade: parseInt(formEdit.quantidade ?? editandoItem.quantidade),
-      vlr_unit: parseFloat(formEdit.vlr_unit ?? editandoItem.vlr_unit) || 0,
+      item_id:     editandoItem.item_id,
+      data:        formEdit.data        ?? String(editandoItem.data).slice(0,10),
+      nf:          formEdit.nf          ?? editandoItem.nf          ?? '',
+      fornecedor:  formEdit.fornecedor  ?? editandoItem.fornecedor  ?? '',
+      quantidade:  parseInt(formEdit.quantidade ?? editandoItem.quantidade),
+      vlr_unit:    parseFloat(formEdit.vlr_unit ?? editandoItem.vlr_unit) || 0,
       responsavel: formEdit.responsavel ?? editandoItem.responsavel ?? '',
-      obs: formEdit.obs ?? editandoItem.obs ?? '',
+      obs:         formEdit.obs         ?? editandoItem.obs         ?? '',
     })
     toast('Entrada atualizada!')
-    setEditandoItem(null)
-    setFormEdit({})
-    loadEntradas()
-    loadItens()
+    setEditandoItem(null); setFormEdit({})
+    loadEntradas(); loadItens()
   }
 
-  async function excluir(id) {
-    await api.delete(`/entradas/${id}`)
-    toast('Entrada removida.', 'warn')
-    loadEntradas()
-    loadItens()
-  }
-
-  const filtered = entradas.filter(e =>
+  const filtered = entradas.filter(e=>
     !busca ||
     e.item_nome?.toLowerCase().includes(busca.toLowerCase()) ||
     e.fornecedor?.toLowerCase().includes(busca.toLowerCase())
   )
-  const totQtd = filtered.reduce((s, e) => s + Number(e.quantidade), 0)
-  const totVlr = filtered.reduce((s, e) => s + Number(e.quantidade) * Number(e.vlr_unit || 0), 0)
+  const totQtd = filtered.reduce((s,e)=>s+Number(e.quantidade),0)
+  const totVlr = filtered.reduce((s,e)=>s+Number(e.quantidade)*Number(e.vlr_unit||0),0)
 
   return (
     <div className="flex flex-col gap-5 p-6 max-w-screen-xl mx-auto">
@@ -169,109 +172,96 @@ export default function Entradas() {
           {/* Cabeçalho */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             <Field label="Data" required>
-              <input type="date" className="input" value={cab.data} onChange={e => setCabField('data', e.target.value)} />
+              <input type="date" className="input" value={cab.data} onChange={e=>setCabField('data',e.target.value)}/>
             </Field>
             <Field label="Nº Nota Fiscal">
-              <input className="input" placeholder="NF-001" value={cab.nf} onChange={e => setCabField('nf', e.target.value)} />
+              <input className="input" placeholder="NF-001" value={cab.nf} onChange={e=>setCabField('nf',e.target.value)}/>
             </Field>
             <Field label="Fornecedor">
-              <input className="input" placeholder="Nome do fornecedor" value={cab.fornecedor} onChange={e => setCabField('fornecedor', e.target.value)} />
+              <input className="input" placeholder="Nome do fornecedor" value={cab.fornecedor} onChange={e=>setCabField('fornecedor',e.target.value)}/>
             </Field>
             <Field label="Responsável">
-              <input className="input" placeholder="Nome" value={cab.responsavel} onChange={e => setCabField('responsavel', e.target.value)} />
+              <input className="input" placeholder="Nome" value={cab.responsavel} onChange={e=>setCabField('responsavel',e.target.value)}/>
             </Field>
             <Field label="Observações">
-              <input className="input" placeholder="Opcional" value={cab.obs} onChange={e => setCabField('obs', e.target.value)} />
+              <input className="input" placeholder="Opcional" value={cab.obs} onChange={e=>setCabField('obs',e.target.value)}/>
+            </Field>
+            <Field label="Estoque de Destino" required>
+              <select className="input" value={estoqueEntrada}
+                onChange={e=>{ setEstoqueEntrada(e.target.value); setLinhas([{...LINHA_VAZIA}]) }}>
+                {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op=><option key={op}>{op}</option>)}
+              </select>
             </Field>
           </div>
 
-          <Field label="Estoque de Destino" required>
-            <select className="input" value={estoqueEntrada}
-              onChange={e => { setEstoqueEntrada(e.target.value); setLinhas([{ ...LINHA_VAZIA }]) }}>
-              {['PATRIMÔNIO', 'CALAMIDADE', 'CEGONHA SOCIAL'].map(op =>
-                <option key={op}>{op}</option>
-              )}
-            </select>
-          </Field>
-          
           {/* Linhas de itens */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
               <span className="label">Itens do Carregamento</span>
               <button type="button" className="btn-secondary flex items-center gap-1.5 !py-1 !text-xs"
-                onClick={() => setLinhas(ls => [...ls, { ...LINHA_VAZIA }])}>
-                <Plus size={13} /> Adicionar Item
+                onClick={()=>setLinhas(ls=>[...ls,{...LINHA_VAZIA}])}>
+                <Plus size={13}/> Adicionar Item
               </button>
             </div>
 
-            {linhas.map((linha, idx) => (
+            {linhas.map((linha,idx)=>(
               <div key={idx} className="bg-slate-50 rounded-lg p-3 flex flex-col gap-2">
                 <div className="grid grid-cols-12 gap-2 items-start">
-
-                  {/* Item */}
                   <div className="col-span-12 sm:col-span-5 flex flex-col gap-1.5">
                     {!linha.novo
                       ? <ItemCombobox itens={itensFiltrados} value={linha.item_id} onChange={v=>handleItemChange(idx,v)}/>
                       : (
                         <div className="flex flex-col gap-2">
                           <input className="input" placeholder="Nome do item *" value={linha.nome}
-                            onChange={e => setLinha(idx, 'nome', e.target.value)} />
+                            onChange={e=>setLinha(idx,'nome',e.target.value)}/>
                           <div className="grid grid-cols-2 gap-2">
                             {!linha.novoTipo
-                              ? <select className="input !text-xs" value={linha.tipo} onChange={e => setLinha(idx, 'tipo', e.target.value)}>
-                                {tipos.map(t => <option key={t}>{t}</option>)}
-                              </select>
+                              ? <select className="input !text-xs" value={linha.tipo} onChange={e=>setLinha(idx,'tipo',e.target.value)}>
+                                  {tipos.map(t=><option key={t}>{t}</option>)}
+                                </select>
                               : <input className="input !text-xs" placeholder="Novo tipo..." value={linha.tipoNovo}
-                                onChange={e => setLinha(idx, 'tipoNovo', e.target.value)} />
+                                  onChange={e=>setLinha(idx,'tipoNovo',e.target.value)}/>
                             }
-                            <select className="input !text-xs" value={linha.unidade} onChange={e => setLinha(idx, 'unidade', e.target.value)}>
-                              {UNIDADES.map(u => <option key={u}>{u}</option>)}
+                            <select className="input !text-xs" value={linha.unidade} onChange={e=>setLinha(idx,'unidade',e.target.value)}>
+                              {UNIDADES.map(u=><option key={u}>{u}</option>)}
                             </select>
                           </div>
                         </div>
                       )
                     }
-                    {/* Checkboxes */}
                     <div className="flex flex-wrap gap-3">
                       <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                        <input type="checkbox" checked={linha.novo} onChange={e => toggleNovo(idx, e.target.checked)} className="accent-[#07635b]" />
+                        <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)} className="accent-[#07635b]"/>
                         Novo cadastro
                       </label>
                       {linha.novo && (
                         <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                          <input type="checkbox" checked={linha.novoTipo} onChange={e => setLinha(idx, 'novoTipo', e.target.checked)} className="accent-[#07635b]" />
+                          <input type="checkbox" checked={linha.novoTipo} onChange={e=>setLinha(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
                           Cadastrar novo tipo
                         </label>
                       )}
                     </div>
                   </div>
 
-                  {/* Quantidade */}
                   <div className="col-span-5 sm:col-span-3">
                     <input type="number" min="1" step="1" placeholder="Qtd"
                       value={linha.quantidade}
-                      className={`input ${!linha.quantidade ? 'border-red-400' : ''}`}
-                      onChange={e => {
-                        const v = e.target.value
-                        setLinha(idx, 'quantidade', v === '' ? '' : Math.floor(Number(v)))
-                      }} />
+                      className={`input ${!linha.quantidade?'border-red-400':''}`}
+                      onChange={e=>setLinha(idx,'quantidade', e.target.value===''?'':Math.floor(Number(e.target.value)))}/>
                   </div>
 
-                  {/* Vlr Unit */}
                   <div className="col-span-5 sm:col-span-3">
                     <input type="number" min="0" step="0.01" placeholder="Vlr unit (R$)"
-                      value={linha.vlr_unit}
-                      className="input"
-                      onChange={e => setLinha(idx, 'vlr_unit', e.target.value)} />
+                      value={linha.vlr_unit} className="input"
+                      onChange={e=>setLinha(idx,'vlr_unit',e.target.value)}/>
                   </div>
 
-                  {/* Remover */}
                   <div className="col-span-2 sm:col-span-1 flex justify-center pt-1">
-                    {linhas.length > 1 && (
+                    {linhas.length>1 && (
                       <button type="button"
                         className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
-                        onClick={() => setLinhas(ls => ls.filter((_, i) => i !== idx))}>
-                        <X size={15} />
+                        onClick={()=>setLinhas(ls=>ls.filter((_,i)=>i!==idx))}>
+                        <X size={15}/>
                       </button>
                     )}
                   </div>
@@ -282,10 +272,10 @@ export default function Entradas() {
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <span className="text-sm text-slate-500">
-              {linhas.filter(l => l.novo ? l.nome : l.item_id).length} item(ns) adicionado(s)
+              {linhas.filter(l=>l.novo?l.nome:l.item_id).length} item(ns) adicionado(s)
             </span>
             <button type="submit" className="btn-primary flex items-center gap-2 px-6" disabled={saving}>
-              <PackagePlus size={16} /> {saving ? 'Salvando...' : 'Registrar Entrada'}
+              <PackagePlus size={16}/> {saving?'Salvando...':'Registrar Entrada'}
             </button>
           </div>
         </form>
@@ -295,45 +285,45 @@ export default function Entradas() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="section-title">Histórico de Entradas</h2>
         <div className="flex gap-3 flex-wrap items-center">
-          <PeriodFilter de={periodo.de} ate={periodo.ate} onChange={setPeriodo} />
+          <PeriodFilter de={periodo.de} ate={periodo.ate} onChange={setPeriodo}/>
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
             <input className="input !pl-8 !py-1.5 !text-xs w-44" placeholder="Buscar..."
-              value={busca} onChange={e => setBusca(e.target.value)} />
+              value={busca} onChange={e=>setBusca(e.target.value)}/>
           </div>
         </div>
       </div>
 
-      {loading ? <Spinner /> : (
+      {loading ? <Spinner/> : (
         <Table
-          cols={['Data', 'NF', 'Fornecedor', 'Item', 'Qtd', 'Vlr Unit', 'Vlr Total', 'Responsável', 'Obs', ...(modoAdmin ? ['Ações'] : [])]}
+          cols={['Data','NF','Fornecedor','Item','Qtd','Vlr Unit','Vlr Total','Responsável','Obs',...(modoAdmin?['Ações']:[])]}
           footer={
             <tr>
               <td colSpan={4} className="td font-bold text-right">Total ({filtered.length})</td>
               <td className="td text-center font-black">{totQtd}</td>
-              <td className="td" />
-              <td className="td text-center font-bold">R$ {Number(totVlr).toFixed(2)}</td>
-              <td colSpan={3} className="td" />
+              <td className="td"/>
+              <td className="td text-right font-bold">R$ {Number(totVlr).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+              <td colSpan={modoAdmin?3:2} className="td"/>
             </tr>
           }>
-          {filtered.length === 0 ? <Empty /> : filtered.map(e => (
+          {filtered.length===0?<Empty/>:filtered.map(e=>(
             <tr key={e.id} className="trow">
               <td className="td whitespace-nowrap">{fmtDate(e.data)}</td>
-              <td className="td text-slate-500">{e.nf || '—'}</td>
-              <td className="td">{e.fornecedor || '—'}</td>
+              <td className="td text-slate-500">{e.nf||'—'}</td>
+              <td className="td">{e.fornecedor||'—'}</td>
               <td className="td font-medium">{e.item_nome}</td>
               <td className="td text-center font-bold text-emerald-600">{e.quantidade}</td>
-              <td className="td text-center">R$ {Number(e.vlr_unit || 0).toFixed(2)}</td>
-              <td className="td text-center font-medium">R$ {(Number(e.quantidade) * Number(e.vlr_unit || 0)).toFixed(2)}</td>
-              <td className="td text-slate-500">{e.responsavel || '—'}</td>
-              <td className="td text-slate-400 text-xs">{e.obs || ''}</td>
+              <td className="td text-right">R$ {Number(e.vlr_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+              <td className="td text-right font-medium">R$ {(Number(e.quantidade)*Number(e.vlr_unit||0)).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+              <td className="td text-slate-500">{e.responsavel||'—'}</td>
+              <td className="td text-slate-400 text-xs">{e.obs||''}</td>
               {modoAdmin && (
                 <td className="td">
                   <div className="flex gap-1">
-                    <button className="p-1.5 rounded-lg text-[#07635b] hover:bg-[#dbf1ef] transition-colors" title="Editar"
-                      onClick={() => { setEditandoItem(e); setFormEdit({}) }}><Edit2 size={14} /></button>
-                    <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors" title="Excluir"
-                      onClick={() => setConfirmDel(e)}><Trash2 size={14} /></button>
+                    <button className="p-1.5 rounded-lg text-[#07635b] hover:bg-[#dbf1ef] transition-colors"
+                      onClick={()=>{ setEditandoItem(e); setFormEdit({}) }}><Edit2 size={14}/></button>
+                    <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      onClick={()=>setConfirmDel(e)}><Trash2 size={14}/></button>
                   </div>
                 </td>
               )}
@@ -342,33 +332,35 @@ export default function Entradas() {
         </Table>
       )}
 
-      {/* Modal edição de entrada */}
+      {/* Modal edição */}
       {editandoItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setEditandoItem(null)} />
+          <div className="absolute inset-0 bg-black/40" onClick={()=>setEditandoItem(null)}/>
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
             <h2 className="text-lg font-bold">Editar Entrada — {editandoItem.item_nome}</h2>
-            <Field label="Data"><input type="date" className="input" defaultValue={String(editandoItem.data).slice(0, 10)} onChange={e => setFormEdit(f => ({ ...f, data: e.target.value }))} /></Field>
-            <Field label="NF"><input className="input" defaultValue={editandoItem.nf || ''} onChange={e => setFormEdit(f => ({ ...f, nf: e.target.value }))} /></Field>
-            <Field label="Fornecedor"><input className="input" defaultValue={editandoItem.fornecedor || ''} onChange={e => setFormEdit(f => ({ ...f, fornecedor: e.target.value }))} /></Field>
+            <Field label="Data"><input type="date" className="input" defaultValue={String(editandoItem.data).slice(0,10)} onChange={e=>setFormEdit(f=>({...f,data:e.target.value}))}/></Field>
+            <Field label="NF"><input className="input" defaultValue={editandoItem.nf||''} onChange={e=>setFormEdit(f=>({...f,nf:e.target.value}))}/></Field>
+            <Field label="Fornecedor"><input className="input" defaultValue={editandoItem.fornecedor||''} onChange={e=>setFormEdit(f=>({...f,fornecedor:e.target.value}))}/></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Quantidade"><input type="number" min="1" step="1" className="input" defaultValue={editandoItem.quantidade} onChange={e => setFormEdit(f => ({ ...f, quantidade: e.target.value }))} /></Field>
-              <Field label="Vlr Unit (R$)"><input type="number" min="0" step="0.01" className="input" defaultValue={editandoItem.vlr_unit || 0} onChange={e => setFormEdit(f => ({ ...f, vlr_unit: e.target.value }))} /></Field>
+              <Field label="Quantidade"><input type="number" min="1" step="1" className="input" defaultValue={editandoItem.quantidade} onChange={e=>setFormEdit(f=>({...f,quantidade:e.target.value}))}/></Field>
+              <Field label="Vlr Unit (R$)"><input type="number" min="0" step="0.01" className="input" defaultValue={editandoItem.vlr_unit||0} onChange={e=>setFormEdit(f=>({...f,vlr_unit:e.target.value}))}/></Field>
             </div>
-            <Field label="Responsável"><input className="input" defaultValue={editandoItem.responsavel || ''} onChange={e => setFormEdit(f => ({ ...f, responsavel: e.target.value }))} /></Field>
-            <Field label="Observações"><input className="input" defaultValue={editandoItem.obs || ''} onChange={e => setFormEdit(f => ({ ...f, obs: e.target.value }))} /></Field>
+            <Field label="Responsável"><input className="input" defaultValue={editandoItem.responsavel||''} onChange={e=>setFormEdit(f=>({...f,responsavel:e.target.value}))}/></Field>
+            <Field label="Observações"><input className="input" defaultValue={editandoItem.obs||''} onChange={e=>setFormEdit(f=>({...f,obs:e.target.value}))}/></Field>
             <div className="flex gap-2 justify-end pt-2">
-              <button className="btn-secondary" onClick={() => setEditandoItem(null)}>Cancelar</button>
+              <button className="btn-secondary" onClick={()=>setEditandoItem(null)}>Cancelar</button>
               <button className="btn-primary" onClick={salvarEdicao}>Salvar</button>
             </div>
           </div>
         </div>
       )}
-      <AdminButton />
-      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
-        onConfirm={() => excluir(confirmDel?.id)}
+
+      <AdminButton/>
+
+      <ConfirmModal open={!!confirmDel} onClose={()=>setConfirmDel(null)}
+        onConfirm={()=>excluir(confirmDel?.id)}
         title="Remover Entrada"
-        message={`Remover entrada de "${confirmDel?.item_nome}"?`} />
+        message={`Remover entrada de "${confirmDel?.item_nome}"?`}/>
     </div>
   )
 }
