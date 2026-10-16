@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Trash2, Search, X, PackagePlus, Edit2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
@@ -27,6 +27,7 @@ export default function Entradas() {
   const [formEdit, setFormEdit] = useState({})
   const [tipos, setTipos]       = useState(getTipos)
   const [estoqueEntrada, setEstoqueEntrada] = useState('PATRIMÔNIO')
+  const submitting = useRef(false)
 
   const [cab, setCab] = useState({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
   const setCabField = (k,v) => setCab(f=>({...f,[k]:v}))
@@ -73,6 +74,8 @@ export default function Entradas() {
       }
     }
 
+    if (submitting.current) return
+    submitting.current = true
     setSaving(true)
     try {
       // Persiste novos tipos
@@ -126,6 +129,7 @@ export default function Entradas() {
     } catch {
       toast('Erro ao registrar entrada.','error')
     } finally {
+      submitting.current = false
       setSaving(false)
     }
   }

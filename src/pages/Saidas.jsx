@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowUpCircle, Trash2, Search, X, Plus, AlertTriangle, Edit2 } from 'lucide-react'
 import { api, getDestinos } from '../lib/api'
 import { Table, Empty, Spinner, Field, ItemCombobox, PeriodFilter, ConfirmModal, toast } from '../components/UI'
@@ -8,13 +8,9 @@ import { exportSaidasRelatorio } from '../lib/export'
 const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
 const today   = () => new Date().toISOString().slice(0,10)
 
-// Gera número de pedido automático
 function gerarPedido(saidas) {
   const d    = new Date()
-  const ano  = d.getFullYear()
-  const mes  = String(d.getMonth()+1).padStart(2,'0')
-  const dia  = String(d.getDate()).padStart(2,'0')
-  const base = 'PED-' + ano + mes + dia
+  const base = 'PED-' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0')
   const seq  = String(saidas.filter(s => s.pedido && s.pedido.startsWith(base)).length + 1).padStart(3,'0')
   return base + '-' + seq
 }
@@ -24,30 +20,31 @@ const LINHA_VAZIA = { item_id: '', quantidade: '' }
 export default function Saidas() {
   const { ativo: modoAdmin } = useAdmin()
   const [destinos]    = useState(getDestinos)
-  const [estoqueSaida, setEstoqueSaida] = useState('PATRIMÔNIO')
   const [itens, setItens]     = useState([])
   const [saidas, setSaidas]   = useState([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
   const [busca, setBusca]     = useState('')
   const [filtroDest, setFiltroDest] = useState('')
   const [periodo, setPeriodo] = useState({ de:'', ate:'' })
   const [confirmDel, setConfirmDel] = useState(null)
   const [editandoItem, setEditandoItem] = useState(null)
   const [formEdit, setFormEdit] = useState({})
+  const [estoqueSaida, setEstoqueSaida] = useState('PATRIMÔNIO')
 
-  // Formulário — cabeçalho e linhas de itens
-  const [cab, setCab] = useState({
-    data: today(), pedido: '', destino: getDestinos()[0] || '',
-    solicitante: '', responsavel: '', obs: ''
-  })
+  // Ref para prevenir duplo submit — mais confiável que state
+  const submitting = useRef(false)
+
+  const [cab, setCab] = useState({ data: today(), pedido: '', destino: getDestinos()[0] || '', solicitante: '', responsavel: '', obs: '' })
   const setCabField = (k, v) => setCab(f => ({ ...f, [k]: v }))
-
-  // Uma única linha por vez para evitar multiplicação
   const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
+  const setLinha = (idx, k, v) => setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, [k]: v } : l))
 
-  const setLinha = (idx, k, v) =>
-    setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, [k]: v } : l))
+  const itensFiltrados = itens.filter(i => (i.estoque || 'PATRIMÔNIO') === estoqueSaida)
+
+  const getSaldo = item_id => {
+    const item = itens.find(i => i.id === item_id)
+    return item ? Math.round(Number(item.saldo) || 0) : null
+  }
 
   const loadItens = useCallback(() => api.get('/itens').then(setItens), [])
 
@@ -57,48 +54,47 @@ export default function Saidas() {
     if (periodo.de)  path += `de=${periodo.de}&`
     if (periodo.ate) path += `ate=${periodo.ate}&`
     if (filtroDest)  path += `destino=${encodeURIComponent(filtroDest)}&`
-    api.get(path).then(setSaidas).finally(() => setLoading(false))
+    api.get(path).then(data => {
+      setSaidas(data)
+      // Gera pedido apenas se ainda não tiver um
+      setCab(f => f.pedido ? f : { ...f, pedido: gerarPedido(data) })
+    }).finally(() => setLoading(false))
   }, [periodo, filtroDest])
 
   useEffect(() => { loadItens() }, [loadItens])
   useEffect(() => { loadSaidas() }, [loadSaidas])
-  useEffect(() => {
-    if (saidas.length >= 0 && !cab.pedido)
-      setCabField('pedido', gerarPedido(saidas))
-  }, [saidas])
 
   async function submit(e) {
     e.preventDefault()
 
-    // Filtra apenas linhas com item selecionado
-    const validas = linhas.filter(l => l.item_id)
-    if (!validas.length) { toast('Adicione ao menos um item.', 'error'); return }
+    // Proteção contra duplo submit usando ref (não state)
+    if (submitting.current) return
+    submitting.current = true
 
-    // Valida quantidades
-    for (const l of validas) {
-      const qtd = parseInt(l.quantidade)
-      if (!l.quantidade || isNaN(qtd) || qtd < 1) {
-        toast('Preencha a quantidade de todos os itens.', 'error'); return
-      }
-    }
-
-    // Busca saldo atualizado do servidor antes de qualquer registro
-    const itensAtuais = await api.get('/itens')
-
-    // Valida saldo — bloqueia se insuficiente
-    for (const l of validas) {
-      const itemAtual = itensAtuais.find(i => i.id === l.item_id)
-      const saldo     = Math.round(Number(itemAtual?.saldo) || 0)
-      const qtd       = parseInt(l.quantidade)
-      if (qtd > saldo) {
-        toast(`Saldo insuficiente para "${itemAtual?.nome}": disponível ${saldo}, solicitado ${qtd}.`, 'error')
-        return
-      }
-    }
-
-    setSaving(true)
     try {
-      // Registra UMA entrada por linha — sem loop duplicado
+      const validas = linhas.filter(l => l.item_id)
+      if (!validas.length) { toast('Adicione ao menos um item.', 'error'); return }
+
+      for (const l of validas) {
+        const qtd = parseInt(l.quantidade)
+        if (!l.quantidade || isNaN(qtd) || qtd < 1) {
+          toast('Preencha a quantidade de todos os itens.', 'error'); return
+        }
+      }
+
+      // Busca saldo FRESCO do servidor — valida antes de registrar
+      const itensAtuais = await api.get('/itens')
+      for (const l of validas) {
+        const itemAtual = itensAtuais.find(i => i.id === l.item_id)
+        const saldo     = Math.round(Number(itemAtual?.saldo) || 0)
+        const qtd       = parseInt(l.quantidade)
+        if (qtd > saldo) {
+          toast(`Saldo insuficiente para "${itemAtual?.nome}": disponível ${saldo}, solicitado ${qtd}.`, 'error')
+          return
+        }
+      }
+
+      // Registra UMA saída por linha
       for (const l of validas) {
         await api.post('/saidas', {
           item_id:     l.item_id,
@@ -113,15 +109,17 @@ export default function Saidas() {
       }
 
       toast(`${validas.length} item(ns) registrado(s)!`)
-      const novosPedido = gerarPedido([...saidas, ...validas])
-      setCab({ data: today(), pedido: novosPedido, destino: getDestinos()[0] || '', solicitante: '', responsavel: '', obs: '' })
+      // Recarrega saídas para gerar novo número de pedido
+      const saidasAtualizadas = await api.get('/saidas?')
+      setSaidas(saidasAtualizadas)
+      const novoPedido = gerarPedido(saidasAtualizadas)
+      setCab({ data: today(), pedido: novoPedido, destino: getDestinos()[0] || '', solicitante: '', responsavel: '', obs: '' })
       setLinhas([{ ...LINHA_VAZIA }])
-      loadSaidas()
       loadItens()
     } catch {
       toast('Erro ao registrar saída.', 'error')
     } finally {
-      setSaving(false)
+      submitting.current = false
     }
   }
 
@@ -148,15 +146,6 @@ export default function Saidas() {
     loadSaidas(); loadItens()
   }
 
-  // Filtra itens pelo estoque selecionado
-  const itensFiltrados = itens.filter(i => (i.estoque||'PATRIMÔNIO') === estoqueSaida)
-
-  // Saldo do item pelo estado local (para preview em tempo real)
-  const getSaldo = item_id => {
-    const item = itens.find(i => i.id === item_id)
-    return item ? Math.round(Number(item.saldo) || 0) : null
-  }
-
   const filtered = saidas.filter(s =>
     !busca ||
     s.item_nome?.toLowerCase().includes(busca.toLowerCase()) ||
@@ -169,25 +158,25 @@ export default function Saidas() {
     <div className="flex flex-col gap-5 p-6 max-w-screen-xl mx-auto">
       <h1 className="page-title">Saídas</h1>
 
-      {/* Formulário */}
       <div className="card p-6">
         <h2 className="section-title mb-4 text-[#07635b]">Registrar Nova Saída / Carregamento</h2>
         <form onSubmit={submit} className="flex flex-col gap-5">
-
-          {/* Cabeçalho */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4 border-b border-slate-100">
             <Field label="Data" required>
-              <input type="date" className="input" value={cab.data}
-                onChange={e => setCabField('data', e.target.value)} />
+              <input type="date" className="input" value={cab.data} onChange={e => setCabField('data', e.target.value)} />
             </Field>
             <Field label="Nº Pedido (automático)">
-              <input className="input bg-slate-50 text-slate-500 cursor-not-allowed"
-                value={cab.pedido} readOnly />
+              <input className="input bg-slate-50 text-slate-500 cursor-not-allowed" value={cab.pedido} readOnly />
             </Field>
             <Field label="Destino" required>
-              <select className="input" value={cab.destino}
-                onChange={e => setCabField('destino', e.target.value)}>
+              <select className="input" value={cab.destino} onChange={e => setCabField('destino', e.target.value)}>
                 {destinos.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </Field>
+            <Field label="Estoque de Origem" required>
+              <select className="input" value={estoqueSaida}
+                onChange={e => { setEstoqueSaida(e.target.value); setLinhas([{ ...LINHA_VAZIA }]) }}>
+                {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op => <option key={op}>{op}</option>)}
               </select>
             </Field>
             <Field label="Solicitante">
@@ -202,15 +191,8 @@ export default function Saidas() {
               <input className="input" placeholder="Opcional" value={cab.obs}
                 onChange={e => setCabField('obs', e.target.value)} />
             </Field>
-            <Field label="Estoque de Origem" required>
-              <select className="input" value={estoqueSaida}
-                onChange={e => { setEstoqueSaida(e.target.value); setLinhas([{ ...LINHA_VAZIA }]) }}>
-                {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op=><option key={op}>{op}</option>)}
-              </select>
-            </Field>
           </div>
 
-          {/* Linhas de itens */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
               <span className="label">Itens do Carregamento</span>
@@ -219,21 +201,16 @@ export default function Saidas() {
                 <Plus size={13} /> Adicionar Item
               </button>
             </div>
-
             <div className="hidden sm:grid grid-cols-12 gap-2 px-2">
               <span className="col-span-6 label">Item</span>
               <span className="col-span-4 label">Quantidade</span>
               <span className="col-span-2 label">Saldo</span>
             </div>
-
             {linhas.map((linha, idx) => {
               const saldo = getSaldo(linha.item_id)
               const qtd   = parseInt(linha.quantidade) || 0
               const insuf = saldo !== null && qtd > saldo
-              const saldoCor = saldo === null ? 'text-slate-400'
-                             : saldo <= 0     ? 'text-red-600'
-                             : saldo <= 5     ? 'text-amber-500'
-                                              : 'text-emerald-600'
+              const saldoCor = saldo === null ? 'text-slate-400' : saldo <= 0 ? 'text-red-600' : saldo <= 5 ? 'text-amber-500' : 'text-emerald-600'
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-lg p-2">
                   <div className="col-span-12 sm:col-span-6">
@@ -241,13 +218,9 @@ export default function Saidas() {
                       onChange={v => setLinha(idx, 'item_id', v)} />
                   </div>
                   <div className="col-span-9 sm:col-span-4">
-                    <input type="number" min="1" step="1" placeholder="Qtd"
-                      value={linha.quantidade}
+                    <input type="number" min="1" step="1" placeholder="Qtd" value={linha.quantidade}
                       className={`input ${!linha.quantidade ? 'border-red-400' : insuf ? 'border-amber-400' : ''}`}
-                      onChange={e => {
-                        const v = e.target.value
-                        setLinha(idx, 'quantidade', v === '' ? '' : Math.floor(Number(v)))
-                      }} />
+                      onChange={e => setLinha(idx, 'quantidade', e.target.value === '' ? '' : Math.floor(Number(e.target.value)))} />
                   </div>
                   <div className={`col-span-2 sm:col-span-1 text-xs font-bold flex items-center gap-1 ${saldoCor}`}>
                     {insuf && <AlertTriangle size={11} />}
@@ -255,8 +228,7 @@ export default function Saidas() {
                   </div>
                   <div className="col-span-1 flex justify-center">
                     {linhas.length > 1 && (
-                      <button type="button"
-                        className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                      <button type="button" className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
                         onClick={() => setLinhas(ls => ls.filter((_, i) => i !== idx))}>
                         <X size={15} />
                       </button>
@@ -268,17 +240,14 @@ export default function Saidas() {
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <span className="text-sm text-slate-500">
-              {linhas.filter(l => l.item_id).length} item(ns) adicionado(s)
-            </span>
-            <button type="submit" className="btn-primary flex items-center gap-2 px-6" disabled={saving}>
-              <ArrowUpCircle size={16} /> {saving ? 'Salvando...' : 'Registrar Saída'}
+            <span className="text-sm text-slate-500">{linhas.filter(l => l.item_id).length} item(ns)</span>
+            <button type="submit" className="btn-primary flex items-center gap-2 px-6">
+              <ArrowUpCircle size={16} /> Registrar Saída
             </button>
           </div>
         </form>
       </div>
 
-      {/* Histórico */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <h2 className="section-title">Histórico de Saídas</h2>
@@ -289,8 +258,7 @@ export default function Saidas() {
         </div>
         <div className="flex gap-3 flex-wrap items-center">
           <PeriodFilter de={periodo.de} ate={periodo.ate} onChange={setPeriodo} />
-          <select className="input !py-1.5 !text-xs w-44" value={filtroDest}
-            onChange={e => setFiltroDest(e.target.value)}>
+          <select className="input !py-1.5 !text-xs w-44" value={filtroDest} onChange={e => setFiltroDest(e.target.value)}>
             <option value="">Todos os destinos</option>
             {destinos.map(d => <option key={d}>{d}</option>)}
           </select>
@@ -307,7 +275,7 @@ export default function Saidas() {
           cols={['Data','Pedido','Item','Qtd','Vlr Total','Destino','Solicitante','Responsável','Obs',...(modoAdmin?['Ações']:[])]}
           footer={
             <tr>
-              <td colSpan={3} className="td font-bold text-right">Total ({filtered.length} registros)</td>
+              <td colSpan={3} className="td font-bold text-right">Total ({filtered.length})</td>
               <td className="td text-center font-black text-orange-600">{Math.round(totQtd)}</td>
               <td className="td text-right font-bold">R$ {Number(totVlr).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
               <td colSpan={modoAdmin?5:4} className="td" />
@@ -321,11 +289,7 @@ export default function Saidas() {
               <td className="td font-medium">{s.item_nome}</td>
               <td className="td text-center font-bold text-orange-500">{s.quantidade}</td>
               <td className="td text-right">{(Number(s.quantidade)*Number(s.vlr_unit||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</td>
-              <td className="td">
-                <span className="text-xs font-medium bg-[#dbf1ef] text-[#07635b] px-2 py-0.5 rounded-full">
-                  {s.destino}
-                </span>
-              </td>
+              <td className="td"><span className="text-xs font-medium bg-[#dbf1ef] text-[#07635b] px-2 py-0.5 rounded-full">{s.destino}</span></td>
               <td className="td text-slate-500">{s.solicitante || '—'}</td>
               <td className="td text-slate-500">{s.responsavel || '—'}</td>
               <td className="td text-slate-400 text-xs">{s.obs || ''}</td>
@@ -333,13 +297,9 @@ export default function Saidas() {
                 <td className="td">
                   <div className="flex gap-1">
                     <button className="p-1.5 rounded-lg text-[#07635b] hover:bg-[#dbf1ef] transition-colors"
-                      onClick={() => { setEditandoItem(s); setFormEdit({}) }}>
-                      <Edit2 size={14} />
-                    </button>
+                      onClick={() => { setEditandoItem(s); setFormEdit({}) }}><Edit2 size={14} /></button>
                     <button className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                      onClick={() => setConfirmDel(s)}>
-                      <Trash2 size={14} />
-                    </button>
+                      onClick={() => setConfirmDel(s)}><Trash2 size={14} /></button>
                   </div>
                 </td>
               )}
@@ -348,38 +308,21 @@ export default function Saidas() {
         </Table>
       )}
 
-      {/* Modal edição */}
       {editandoItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditandoItem(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
             <h2 className="text-lg font-bold">Editar Saída — {editandoItem.item_nome}</h2>
-            <Field label="Data">
-              <input type="date" className="input" defaultValue={String(editandoItem.data).slice(0,10)}
-                onChange={e => setFormEdit(f => ({...f, data: e.target.value}))} />
-            </Field>
+            <Field label="Data"><input type="date" className="input" defaultValue={String(editandoItem.data).slice(0,10)} onChange={e=>setFormEdit(f=>({...f,data:e.target.value}))}/></Field>
             <Field label="Destino">
-              <select className="input" defaultValue={editandoItem.destino}
-                onChange={e => setFormEdit(f => ({...f, destino: e.target.value}))}>
-                {destinos.map(d => <option key={d}>{d}</option>)}
+              <select className="input" defaultValue={editandoItem.destino} onChange={e=>setFormEdit(f=>({...f,destino:e.target.value}))}>
+                {destinos.map(d=><option key={d}>{d}</option>)}
               </select>
             </Field>
-            <Field label="Quantidade">
-              <input type="number" min="1" step="1" className="input" defaultValue={editandoItem.quantidade}
-                onChange={e => setFormEdit(f => ({...f, quantidade: e.target.value}))} />
-            </Field>
-            <Field label="Solicitante">
-              <input className="input" defaultValue={editandoItem.solicitante || ''}
-                onChange={e => setFormEdit(f => ({...f, solicitante: e.target.value}))} />
-            </Field>
-            <Field label="Responsável">
-              <input className="input" defaultValue={editandoItem.responsavel || ''}
-                onChange={e => setFormEdit(f => ({...f, responsavel: e.target.value}))} />
-            </Field>
-            <Field label="Observações">
-              <input className="input" defaultValue={editandoItem.obs || ''}
-                onChange={e => setFormEdit(f => ({...f, obs: e.target.value}))} />
-            </Field>
+            <Field label="Quantidade"><input type="number" min="1" step="1" className="input" defaultValue={editandoItem.quantidade} onChange={e=>setFormEdit(f=>({...f,quantidade:e.target.value}))}/></Field>
+            <Field label="Solicitante"><input className="input" defaultValue={editandoItem.solicitante||''} onChange={e=>setFormEdit(f=>({...f,solicitante:e.target.value}))}/></Field>
+            <Field label="Responsável"><input className="input" defaultValue={editandoItem.responsavel||''} onChange={e=>setFormEdit(f=>({...f,responsavel:e.target.value}))}/></Field>
+            <Field label="Observações"><input className="input" defaultValue={editandoItem.obs||''} onChange={e=>setFormEdit(f=>({...f,obs:e.target.value}))}/></Field>
             <div className="flex gap-2 justify-end pt-2">
               <button className="btn-secondary" onClick={() => setEditandoItem(null)}>Cancelar</button>
               <button className="btn-primary" onClick={salvarEdicao}>Salvar</button>
@@ -389,7 +332,6 @@ export default function Saidas() {
       )}
 
       <AdminButton />
-
       <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)}
         onConfirm={() => excluir(confirmDel?.id)}
         title="Remover Saída"

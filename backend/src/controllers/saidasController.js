@@ -1,5 +1,5 @@
+const db    = require('../db/connection')
 const Saida = require('../models/SaidaModel')
-const Item  = require('../models/ItemModel')
 
 const saidasController = {
   async list(req, res) {
@@ -10,11 +10,53 @@ const saidasController = {
 
   async create(req, res) {
     const { item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs } = req.body
-    if (!item_id || !data || !destino || !quantidade) return res.status(400).json({ error: 'item_id, data, destino e quantidade são obrigatórios.' })
-    const item = await Item.findById(item_id)
-    if (!item) return res.status(404).json({ error: 'Item não encontrado.' })
-    const saida = await Saida.create({ item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs })
-    res.status(201).json(saida)
+    if (!item_id || !data || !destino || !quantidade)
+      return res.status(400).json({ error: 'item_id, data, destino e quantidade são obrigatórios.' })
+
+    const qtd = parseInt(quantidade)
+    if (isNaN(qtd) || qtd < 1)
+      return res.status(400).json({ error: 'Quantidade deve ser um inteiro positivo.' })
+
+    const conn = await db.getConnection()
+    try {
+      await conn.beginTransaction()
+
+      // Calcula saldo atual com LOCK — previne corrida entre requisições simultâneas
+      const [[saldoRow]] = await conn.query(`
+        SELECT
+          COALESCE((SELECT SUM(e.quantidade) FROM entradas e WHERE e.item_id = i.id), 0)
+          - COALESCE((SELECT SUM(s.quantidade) FROM saidas   s WHERE s.item_id = i.id), 0)
+          AS saldo
+        FROM itens i
+        WHERE i.id = ? AND i.ativo = 1
+        FOR UPDATE
+      `, [item_id])
+
+      if (!saldoRow) {
+        await conn.rollback()
+        return res.status(404).json({ error: 'Item não encontrado.' })
+      }
+
+      const saldo = Math.round(Number(saldoRow.saldo) || 0)
+      if (qtd > saldo) {
+        await conn.rollback()
+        return res.status(400).json({ error: `Saldo insuficiente: disponível ${saldo}, solicitado ${qtd}.` })
+      }
+
+      const [result] = await conn.query(
+        'INSERT INTO saidas (item_id, data, pedido, destino, quantidade, solicitante, responsavel, obs) VALUES (?,?,?,?,?,?,?,?)',
+        [item_id, data, pedido||null, destino, qtd, solicitante||null, responsavel||null, obs||null]
+      )
+
+      await conn.commit()
+      const saida = await Saida.findById(result.insertId)
+      res.status(201).json(saida)
+    } catch (err) {
+      await conn.rollback()
+      throw err
+    } finally {
+      conn.release()
+    }
   },
 
   async update(req, res) {

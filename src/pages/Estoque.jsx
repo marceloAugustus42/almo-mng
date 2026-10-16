@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, Pencil, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import { Modal, ConfirmModal, Table, StatusBadge, Empty, Spinner, Field, toast } from '../components/UI'
@@ -62,6 +62,7 @@ function ItemModal({ open, onClose, item, onSave, tipos, setTipos, abaEstoque })
   async function submit(e) {
     e.preventDefault()
     if (!form.nome.trim()) return
+    onClose() // fecha modal ANTES do onSave para evitar re-render com modal aberto
     await onSave({ nome:form.nome, tipo:form.tipo, unidade:form.unidade, vlr_unit:parseFloat(form.vlr_unit)||0, estoque:form.estoque||'PATRIMÔNIO', ajuste: ajuste !== '' ? parseInt(ajuste) : null })
     onClose()
   }
@@ -141,6 +142,7 @@ export default function Estoque() {
   const [modal, setModal]           = useState(false)
   const [editando, setEditando]     = useState(null)
   const [confirmDel, setConfirmDel] = useState(null)
+  const salvandoRef = useRef(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -150,6 +152,9 @@ export default function Estoque() {
   useEffect(()=>{ saveTipos(tipos) },[tipos])
 
   async function salvar(form) {
+    if (salvandoRef.current) return
+    salvandoRef.current = true
+    try {
     if (editando) {
       // Busca saldo atualizado direto da API para evitar diff incorreto
       const listaAtual = await api.get('/itens')
@@ -203,6 +208,12 @@ export default function Estoque() {
       toast('Item cadastrado!')
     }
     load()
+    } catch (err) {
+      console.error('Erro ao salvar item/ajuste de estoque:', err)
+      toast('Não foi possível concluir a operação. Confira o estoque e o histórico antes de tentar novamente.', 'error')
+    } finally {
+      salvandoRef.current = false
+    }
   }
 
   async function excluir(id) {
