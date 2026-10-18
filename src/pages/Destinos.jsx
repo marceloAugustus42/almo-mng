@@ -5,16 +5,17 @@ import { Table, Empty, Spinner, PeriodFilter, toast } from '../components/UI'
 import { useAdmin } from '../components/AdminContext'
 import { exportPorDestino } from '../lib/export'
 
-const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0,10); const [y,m,di]=s.split('-'); return `${di}/${m}/${y}` }
+const fmtDate = d => { if (!d) return '—'; const s = String(d).slice(0, 10); const [y, m, di] = s.split('-'); return `${di}/${m}/${y}` }
 
 const DESTINOS_KEY = 'almoxa_destinos'
 const hoje = () => new Date().toISOString().slice(0, 10)
 const anoAtual = () => new Date().getFullYear()
 const periodoInicial = () => ({ de: `${anoAtual()}-01-01`, ate: hoje() })
 
+
 const DESTINOS_PADRAO = [
-  'CRAS Centro','CRAS Vila','CRAS Triângulo','CRAS Habbitat',
-  'Sede','CREAS','Asilo','Conselho Tutelar','Casa dos Conselhos'
+  'CRAS Centro', 'CRAS Vila', 'CRAS Triângulo', 'CRAS Habbitat',
+  'Sede', 'CREAS', 'Asilo', 'Conselho Tutelar', 'Casa dos Conselhos'
 ]
 
 function getDestinos() {
@@ -31,18 +32,19 @@ function saveDestinos(lista) {
 // Modal de autenticação
 export default function Destinos() {
   const { pedirSenha } = useAdmin()
+  const { ativo } = useAdmin()
   const [destinos, setDestinos] = useState(getDestinos)
-  const [destino, setDestino]   = useState(() => getDestinos()[0] || '')
-  const [saidas, setSaidas]     = useState([])
+  const [destino, setDestino] = useState(() => getDestinos()[0] || '')
+  const [saidas, setSaidas] = useState([])
   const [todasSaidas, setTodasSaidas] = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [periodo, setPeriodo]   = useState(periodoInicial)
+  const [loading, setLoading] = useState(true)
+  const [periodo, setPeriodo] = useState(periodoInicial)
 
   // Estados de edição
-  const [editando, setEditando]         = useState(null)   // nome sendo editado
-  const [nomeEdit, setNomeEdit]         = useState('')
-  const [novoNome, setNovoNome]         = useState('')
-  const [criando, setCriando]           = useState(false)
+  const [editando, setEditando] = useState(null)   // nome sendo editado
+  const [nomeEdit, setNomeEdit] = useState('')
+  const [novoNome, setNovoNome] = useState('')
+  const [criando, setCriando] = useState(false)
 
   // Persiste destinos no localStorage sempre que mudam
   useEffect(() => { saveDestinos(destinos) }, [destinos])
@@ -50,7 +52,7 @@ export default function Destinos() {
   const loadSaidas = useCallback(() => {
     setLoading(true)
     let path = `/saidas?destino=${encodeURIComponent(destino)}`
-    if (periodo.de)  path += `&de=${periodo.de}`
+    if (periodo.de) path += `&de=${periodo.de}`
     if (periodo.ate) path += `&ate=${periodo.ate}`
     api.get(path).then(setSaidas).finally(() => setLoading(false))
   }, [destino, periodo])
@@ -117,8 +119,8 @@ export default function Destinos() {
     acc[s.item_nome].total += s.quantidade
     return acc
   }, {})
-  const resumoList  = Object.values(resumoMap).sort((a, b) => b.total - a.total)
-  const totalGeral  = saidas.reduce((s, e) => s + e.quantidade, 0)
+  const resumoList = Object.values(resumoMap).sort((a, b) => b.total - a.total)
+  const totalGeral = saidas.reduce((s, e) => s + e.quantidade, 0)
 
   return (
     <div className="flex min-h-screen">
@@ -150,9 +152,9 @@ export default function Destinos() {
                     onChange={e => setNomeEdit(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' ? salvarEdicao() : e.key === 'Escape' && setEditando(null)}
                   />
-                  <button onClick={salvarEdicao} className="text-[#07635b] hover:text-[#054d47]"><Check size={14}/></button>
-                  <button onClick={() => excluirDestino(d)} className="text-red-400 hover:text-red-600"><Trash2 size={13}/></button>
-                  <button onClick={() => setEditando(null)} className="text-slate-400 hover:text-slate-600"><X size={13}/></button>
+                  <button onClick={salvarEdicao} className="text-[#07635b] hover:text-[#054d47]"><Check size={14} /></button>
+                  <button onClick={() => excluirDestino(d)} className="text-red-400 hover:text-red-600"><Trash2 size={13} /></button>
+                  <button onClick={() => setEditando(null)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
                 </div>
               ) : (
                 <button
@@ -162,8 +164,8 @@ export default function Destinos() {
                 </button>
               )}
 
-              {/* Lápis — direita, visível ao hover */}
-              {editando !== d && (
+              {/* Lápis — direita, visível ao hover, apenas para admin */}
+              {editando !== d && ativo && (
                 <button
                   title="Editar destino"
                   onClick={() => iniciarEdicao(d)}
@@ -183,8 +185,8 @@ export default function Destinos() {
                 onChange={e => setNovoNome(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' ? salvarNovo() : e.key === 'Escape' && setCriando(false)}
               />
-              <button onClick={salvarNovo} className="text-[#07635b]"><Check size={14}/></button>
-              <button onClick={() => setCriando(false)} className="text-slate-400"><X size={14}/></button>
+              <button onClick={salvarNovo} className="text-[#07635b]"><Check size={14} /></button>
+              <button onClick={() => setCriando(false)} className="text-slate-400"><X size={14} /></button>
             </div>
           )}
         </div>
@@ -199,10 +201,10 @@ export default function Destinos() {
           </div>
           <div className="flex gap-2 flex-wrap">
             <button className="btn-secondary flex items-center gap-2" onClick={exportarDestino}>
-              <Download size={15}/> Exportar este destino
+              <Download size={15} /> Exportar este destino
             </button>
             <button className="btn-primary flex items-center gap-2" onClick={exportarTodos}>
-              <Download size={15}/> Exportar todos (.xlsx)
+              <Download size={15} /> Exportar todos (.xlsx)
             </button>
           </div>
         </div>
@@ -214,20 +216,20 @@ export default function Destinos() {
             {/* Tabela saídas */}
             <div className="xl:col-span-2 flex flex-col gap-2">
               <h2 className="section-title">Saídas Registradas</h2>
-              <Table cols={['Data','Pedido','Item','Qtd','Unidade','Solicitante','Responsável']}>
+              <Table cols={['Data', 'Pedido', 'Item', 'Qtd', 'Unidade', 'Solicitante', 'Responsável']}>
                 {saidas.length === 0
                   ? <Empty msg="Nenhuma saída para este destino." />
                   : saidas.map(s => (
-                      <tr key={s.id} className="trow">
-                        <td className="td whitespace-nowrap">{fmtDate(s.data)}</td>
-                        <td className="td text-slate-500 text-xs">{s.pedido || '—'}</td>
-                        <td className="td font-medium">{s.item_nome}</td>
-                        <td className="td text-center font-bold text-orange-500">{s.quantidade}</td>
-                        <td className="td text-slate-500 text-center">{s.item_unidade || '—'}</td>
-                        <td className="td text-slate-500">{s.solicitante || '—'}</td>
-                        <td className="td text-slate-500">{s.responsavel || '—'}</td>
-                      </tr>
-                    ))
+                    <tr key={s.id} className="trow">
+                      <td className="td whitespace-nowrap">{fmtDate(s.data)}</td>
+                      <td className="td text-slate-500 text-xs">{s.pedido || '—'}</td>
+                      <td className="td font-medium">{s.item_nome}</td>
+                      <td className="td text-center font-bold text-orange-500">{s.quantidade}</td>
+                      <td className="td text-slate-500 text-center">{s.item_unidade || '—'}</td>
+                      <td className="td text-slate-500">{s.solicitante || '—'}</td>
+                      <td className="td text-slate-500">{s.responsavel || '—'}</td>
+                    </tr>
+                  ))
                 }
               </Table>
               {saidas.length > 0 && (
