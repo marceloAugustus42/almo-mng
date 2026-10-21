@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react'
-import { Download, FileSpreadsheet, FileText, BarChart2 } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, BarChart2, FileDown } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { api, DESTINOS } from '../lib/api'
 import { toast, Spinner, Table, Empty } from '../components/UI'
-import { exportCompleto, exportPorDestino, exportEntradas } from '../lib/export'
+import { exportCompleto, exportPorDestino, exportEntradas, exportPedido } from '../lib/export'
 
 export default function Relatorios() {
   const [itens, setItens]     = useState([])
   const [entradas, setEntradas] = useState([])
   const [saidas, setSaidas]   = useState([])
   const [loading, setLoading] = useState(true)
+
+  const [buscaPedido, setBuscaPedido] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const POR_PAGINA = 12
+
+  useEffect(() => { setPagina(1) }, [buscaPedido])
 
   useEffect(() => {
     setLoading(true)
@@ -26,6 +32,40 @@ export default function Relatorios() {
     const s = saidas.filter(x=>x.destino===d)
     return { dest: d, count: s.length, total: Math.round(s.reduce((a,b)=>a+b.quantidade,0)) }
   }).sort((a,b)=>b.total-a.total)
+
+  // Agrupa saídas por número de pedido
+  const pedidos = Object.values(
+    saidas.reduce((acc, s) => {
+      const num = s.pedido || ('SEM-PEDIDO-' + s.id)
+      if (!acc[num]) acc[num] = {
+        numero: num, data: s.data, destino: s.destino,
+        solicitante: s.solicitante || '—', responsavel: s.responsavel || '—',
+        obs: s.obs || '', itens: [], total: 0,
+      }
+      acc[num].itens.push(s)
+      acc[num].total += Number(s.quantidade)
+      return acc
+    }, {})
+  ).sort((a,b) => (b.data||'').localeCompare(a.data||''))
+
+  const pedidosFiltrados = pedidos.filter(p =>
+    !buscaPedido ||
+    p.numero.toLowerCase().includes(buscaPedido.toLowerCase()) ||
+    p.destino?.toLowerCase().includes(buscaPedido.toLowerCase()) ||
+    p.solicitante?.toLowerCase().includes(buscaPedido.toLowerCase())
+  )
+
+  function fmtDate(d) {
+    if (!d) return '—'
+    const s = String(d).slice(0,10)
+    const [y,m,di] = s.split('-')
+    return `${di}/${m}/${y}`
+  }
+
+  function gerarRelatorioPedido(pedido) {
+    try { exportPedido(pedido, pedido.itens); toast(`Relatório ${pedido.numero} exportado!`) }
+    catch { toast('Erro ao exportar.','error') }
+  }
 
   // Gráfico mensal por destino (últimos 6 meses)
   const mesesLabels = []
@@ -110,6 +150,69 @@ export default function Relatorios() {
           onClick={exportarEnt}
           color="bg-emerald-600"
         />
+      </div>
+
+      {/* Relatórios por Pedido */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <h2 className="section-title">📋 Relatórios por Pedido</h2>
+          <input className="input !py-1.5 !text-xs w-64"
+            placeholder="Buscar por pedido, destino ou solicitante..."
+            value={buscaPedido} onChange={e=>setBuscaPedido(e.target.value)}/>
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-max">
+            <thead className="bg-[#07635b]">
+              <tr>
+                {['Nº Pedido','Data','Destino','Solicitante','Itens','Total Qtd',''].map((h,i)=>(
+                  <th key={i} className="th whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pedidosFiltrados.length === 0
+                ? <tr><td colSpan={7} className="td text-center text-slate-400 py-8">Nenhum pedido encontrado.</td></tr>
+                : pedidosFiltrados.slice((pagina-1)*POR_PAGINA, pagina*POR_PAGINA).map((p,i) => (
+                    <tr key={p.numero} className={`trow ${i%2===0?'':'bg-slate-50/50'}`}>
+                      <td className="td font-mono text-xs font-semibold text-[#07635b]">{p.numero}</td>
+                      <td className="td whitespace-nowrap">{fmtDate(p.data)}</td>
+                      <td className="td">
+                        <span className="text-xs font-medium bg-[#dbf1ef] text-[#07635b] px-2 py-0.5 rounded-full">{p.destino}</span>
+                      </td>
+                      <td className="td text-slate-500">{p.solicitante}</td>
+                      <td className="td text-center text-xs text-slate-500">{p.itens.length} item(ns)</td>
+                      <td className="td text-center font-bold text-orange-500">{Math.round(p.total)}</td>
+                      <td className="td">
+                        <button
+                          className="flex items-center gap-1.5 text-xs font-semibold text-[#07635b] hover:bg-[#dbf1ef] px-2 py-1 rounded-lg transition-colors"
+                          onClick={() => gerarRelatorioPedido(p)}>
+                          <FileDown size={14}/> .xlsx
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
+          <p className="text-xs text-slate-400">
+            {pedidosFiltrados.length} pedido(s) • página {pagina} de {Math.ceil(pedidosFiltrados.length/POR_PAGINA)||1}
+          </p>
+          <div className="flex gap-1 flex-wrap">
+            <button className="btn-ghost text-xs px-2 py-1" disabled={pagina===1}
+              onClick={()=>setPagina(p=>p-1)}>← Anterior</button>
+            {Array.from({length: Math.ceil(pedidosFiltrados.length/POR_PAGINA)}, (_,i)=>(
+              <button key={i} onClick={()=>setPagina(i+1)}
+                className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors ${pagina===i+1?'bg-[#07635b] text-white':'hover:bg-[#dbf1ef] text-slate-600'}`}>
+                {i+1}
+              </button>
+            ))}
+            <button className="btn-ghost text-xs px-2 py-1"
+              disabled={pagina>=Math.ceil(pedidosFiltrados.length/POR_PAGINA)}
+              onClick={()=>setPagina(p=>p+1)}>Próximo →</button>
+          </div>
+        </div>
       </div>
 
       {/* Gráfico comparativo mensal */}

@@ -12,7 +12,7 @@ const TIPOS_KEY = 'almoxa_tipos'
 const TIPOS_PAD = ['Limpeza','Higiene','Escritório','Uniforme','Equipamento','Outros']
 const getTipos  = () => { try { const r=localStorage.getItem(TIPOS_KEY); return r?JSON.parse(r):TIPOS_PAD } catch { return TIPOS_PAD } }
 
-const LINHA_VAZIA = { item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade', novoTipo:false, tipoNovo:'' }
+const LINHA_VAZIA = { estoque:'PATRIMÔNIO', item_id:'', quantidade:'', vlr_unit:'', novo:false, nome:'', tipo:'', unidade:'Unidade', novoTipo:false, tipoNovo:'' }
 
 export default function Entradas() {
   const { ativo: modoAdmin } = useAdmin()
@@ -26,7 +26,6 @@ export default function Entradas() {
   const [editandoItem, setEditandoItem] = useState(null)
   const [formEdit, setFormEdit] = useState({})
   const [tipos, setTipos]       = useState(getTipos)
-  const [estoqueEntrada, setEstoqueEntrada] = useState('PATRIMÔNIO')
   const submitting = useRef(false)
 
   const [cab, setCab] = useState({ data:today(), nf:'', fornecedor:'', responsavel:'', obs:'' })
@@ -37,7 +36,7 @@ export default function Entradas() {
 
   const toggleNovo = (idx, checked) =>
     setLinhas(ls=>ls.map((l,i)=>i===idx
-      ? { ...LINHA_VAZIA, novo:checked, tipo:tipos[0]||'' }
+      ? { ...LINHA_VAZIA, estoque:l.estoque, novo:checked, tipo:tipos[0]||'' }
       : l))
 
   const handleItemChange = (idx, item_id) => {
@@ -46,8 +45,7 @@ export default function Entradas() {
     if (item) setLinha(idx,'vlr_unit', item.vlr_unit||'')
   }
 
-  // Filtra itens pelo estoque selecionado
-  const itensFiltrados = itens.filter(i => (i.estoque||'PATRIMÔNIO') === estoqueEntrada)
+  const itensDoEstoque = est => itens.filter(i => (i.estoque||'PATRIMÔNIO') === est)
 
   const loadItens    = useCallback(()=>api.get('/itens').then(setItens),[])
   const loadEntradas = useCallback(()=>{
@@ -104,7 +102,7 @@ export default function Entradas() {
             tipo,
             unidade:  l.unidade,
             vlr_unit: parseFloat(l.vlr_unit)||0,
-            estoque:  estoqueEntrada,
+            estoque:  l.estoque,
           })
           item_id = novo.id
         }
@@ -190,12 +188,6 @@ export default function Entradas() {
             <Field label="Observações">
               <input className="input" placeholder="Opcional" value={cab.obs} onChange={e=>setCabField('obs',e.target.value)}/>
             </Field>
-            <Field label="Estoque de Destino" required>
-              <select className="input" value={estoqueEntrada}
-                onChange={e=>{ setEstoqueEntrada(e.target.value); setLinhas([{...LINHA_VAZIA}]) }}>
-                {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op=><option key={op}>{op}</option>)}
-              </select>
-            </Field>
           </div>
 
           {/* Linhas de itens */}
@@ -208,59 +200,40 @@ export default function Entradas() {
               </button>
             </div>
 
-            {linhas.map((linha,idx)=>(
-              <div key={idx} className="bg-slate-50 rounded-lg p-3 flex flex-col gap-2">
-                <div className="grid grid-cols-12 gap-2 items-start">
-                  <div className="col-span-12 sm:col-span-5 flex flex-col gap-1.5">
-                    {!linha.novo
-                      ? <ItemCombobox itens={itensFiltrados} value={linha.item_id} onChange={v=>handleItemChange(idx,v)}/>
-                      : (
-                        <div className="flex flex-col gap-2">
-                          <input className="input" placeholder="Nome do item *" value={linha.nome}
-                            onChange={e=>setLinha(idx,'nome',e.target.value)}/>
-                          <div className="grid grid-cols-2 gap-2">
-                            {!linha.novoTipo
-                              ? <select className="input !text-xs" value={linha.tipo} onChange={e=>setLinha(idx,'tipo',e.target.value)}>
-                                  {tipos.map(t=><option key={t}>{t}</option>)}
-                                </select>
-                              : <input className="input !text-xs" placeholder="Novo tipo..." value={linha.tipoNovo}
-                                  onChange={e=>setLinha(idx,'tipoNovo',e.target.value)}/>
-                            }
-                            <select className="input !text-xs" value={linha.unidade} onChange={e=>setLinha(idx,'unidade',e.target.value)}>
-                              {UNIDADES.map(u=><option key={u}>{u}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                      )
-                    }
-                    <div className="flex flex-wrap gap-3">
-                      <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                        <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)} className="accent-[#07635b]"/>
-                        Novo cadastro
-                      </label>
-                      {linha.novo && (
-                        <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
-                          <input type="checkbox" checked={linha.novoTipo} onChange={e=>setLinha(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
-                          Cadastrar novo tipo
-                        </label>
-                      )}
-                    </div>
-                  </div>
+            <div className="hidden sm:grid grid-cols-12 gap-2 px-2">
+              <span className="col-span-2 label">Estoque</span>
+              <span className="col-span-4 label">Item</span>
+              <span className="col-span-2 label">Quantidade</span>
+              <span className="col-span-3 label">Vlr Unit (R$)</span>
+            </div>
 
-                  <div className="col-span-5 sm:col-span-3">
-                    <input type="number" min="1" step="1" placeholder="Qtd"
-                      value={linha.quantidade}
+            {linhas.map((linha,idx)=>(
+              <div key={idx} className="bg-slate-50 rounded-lg p-2 flex flex-col gap-2">
+                <div className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-12 sm:col-span-2">
+                    <select className="input !text-xs" value={linha.estoque}
+                      onChange={e=>setLinhas(ls=>ls.map((l,i)=>i===idx?{...l,estoque:e.target.value,item_id:''}:l))}>
+                      {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op=><option key={op}>{op}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-12 sm:col-span-4">
+                    {!linha.novo
+                      ? <ItemCombobox itens={itensDoEstoque(linha.estoque)} value={linha.item_id} onChange={v=>handleItemChange(idx,v)}/>
+                      : <input className="input" placeholder="Nome do novo item *" value={linha.nome}
+                          onChange={e=>setLinha(idx,'nome',e.target.value)}/>
+                    }
+                  </div>
+                  <div className="col-span-6 sm:col-span-2">
+                    <input type="number" min="1" step="1" placeholder="Qtd" value={linha.quantidade}
                       className={`input ${!linha.quantidade?'border-red-400':''}`}
                       onChange={e=>setLinha(idx,'quantidade', e.target.value===''?'':Math.floor(Number(e.target.value)))}/>
                   </div>
-
-                  <div className="col-span-5 sm:col-span-3">
-                    <input type="number" min="0" step="0.01" placeholder="Vlr unit (R$)"
-                      value={linha.vlr_unit} className="input"
+                  <div className="col-span-6 sm:col-span-3">
+                    <input type="number" min="0" step="0.01" placeholder="0,00" value={linha.vlr_unit}
+                      className="input"
                       onChange={e=>setLinha(idx,'vlr_unit',e.target.value)}/>
                   </div>
-
-                  <div className="col-span-2 sm:col-span-1 flex justify-center pt-1">
+                  <div className="col-span-12 sm:col-span-1 flex justify-center">
                     {linhas.length>1 && (
                       <button type="button"
                         className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
@@ -269,6 +242,38 @@ export default function Entradas() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {linha.novo && (
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-12 sm:col-span-4 sm:col-start-3 grid grid-cols-2 gap-2">
+                      {!linha.novoTipo
+                        ? <select className="input !text-xs" title="Tipo" value={linha.tipo}
+                            onChange={e=>setLinha(idx,'tipo',e.target.value)}>
+                            {tipos.map(t=><option key={t}>{t}</option>)}
+                          </select>
+                        : <input className="input !text-xs" placeholder="Nome do novo tipo..." value={linha.tipoNovo}
+                            onChange={e=>setLinha(idx,'tipoNovo',e.target.value)}/>
+                      }
+                      <select className="input !text-xs" title="Unidade" value={linha.unidade}
+                        onChange={e=>setLinha(idx,'unidade',e.target.value)}>
+                        {UNIDADES.map(u=><option key={u}>{u}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-4 px-1">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+                    <input type="checkbox" checked={linha.novo} onChange={e=>toggleNovo(idx,e.target.checked)} className="accent-[#07635b]"/>
+                    Novo cadastro
+                  </label>
+                  {linha.novo && (
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+                      <input type="checkbox" checked={linha.novoTipo} onChange={e=>setLinha(idx,'novoTipo',e.target.checked)} className="accent-[#07635b]"/>
+                      Cadastrar novo tipo
+                    </label>
+                  )}
                 </div>
               </div>
             ))}

@@ -15,7 +15,8 @@ function gerarPedido(saidas) {
   return base + '-' + seq
 }
 
-const LINHA_VAZIA = { item_id: '', quantidade: '' }
+const ESTOQUES = ['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL']
+const LINHA_VAZIA = { estoque: 'PATRIMÔNIO', item_id: '', quantidade: '' }
 
 export default function Saidas() {
   const { ativo: modoAdmin } = useAdmin()
@@ -29,7 +30,6 @@ export default function Saidas() {
   const [confirmDel, setConfirmDel] = useState(null)
   const [editandoItem, setEditandoItem] = useState(null)
   const [formEdit, setFormEdit] = useState({})
-  const [estoqueSaida, setEstoqueSaida] = useState('PATRIMÔNIO')
 
   // Ref para prevenir duplo submit — mais confiável que state
   const submitting = useRef(false)
@@ -39,7 +39,7 @@ export default function Saidas() {
   const [linhas, setLinhas] = useState([{ ...LINHA_VAZIA }])
   const setLinha = (idx, k, v) => setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, [k]: v } : l))
 
-  const itensFiltrados = itens.filter(i => (i.estoque || 'PATRIMÔNIO') === estoqueSaida)
+  const itensDoEstoque = est => itens.filter(i => (i.estoque || 'PATRIMÔNIO') === est)
 
   const getSaldo = item_id => {
     const item = itens.find(i => i.id === item_id)
@@ -84,10 +84,11 @@ export default function Saidas() {
 
       // Busca saldo FRESCO do servidor — valida antes de registrar
       const itensAtuais = await api.get('/itens')
-      for (const l of validas) {
-        const itemAtual = itensAtuais.find(i => i.id === l.item_id)
+      const pedidoPorItem = {}
+      for (const l of validas) pedidoPorItem[l.item_id] = (pedidoPorItem[l.item_id] || 0) + parseInt(l.quantidade)
+      for (const [id, qtd] of Object.entries(pedidoPorItem)) {
+        const itemAtual = itensAtuais.find(i => i.id === Number(id))
         const saldo     = Math.round(Number(itemAtual?.saldo) || 0)
-        const qtd       = parseInt(l.quantidade)
         if (qtd > saldo) {
           toast(`Saldo insuficiente para "${itemAtual?.nome}": disponível ${saldo}, solicitado ${qtd}.`, 'error')
           return
@@ -173,12 +174,6 @@ export default function Saidas() {
                 {destinos.map(d => <option key={d}>{d}</option>)}
               </select>
             </Field>
-            <Field label="Estoque de Origem" required>
-              <select className="input" value={estoqueSaida}
-                onChange={e => { setEstoqueSaida(e.target.value); setLinhas([{ ...LINHA_VAZIA }]) }}>
-                {['PATRIMÔNIO','CALAMIDADE','CEGONHA SOCIAL'].map(op => <option key={op}>{op}</option>)}
-              </select>
-            </Field>
             <Field label="Solicitante">
               <input className="input" placeholder="Quem solicitou" value={cab.solicitante}
                 onChange={e => setCabField('solicitante', e.target.value)} />
@@ -202,8 +197,9 @@ export default function Saidas() {
               </button>
             </div>
             <div className="hidden sm:grid grid-cols-12 gap-2 px-2">
-              <span className="col-span-6 label">Item</span>
-              <span className="col-span-4 label">Quantidade</span>
+              <span className="col-span-3 label">Estoque</span>
+              <span className="col-span-4 label">Item</span>
+              <span className="col-span-2 label">Quantidade</span>
               <span className="col-span-2 label">Saldo</span>
             </div>
             {linhas.map((linha, idx) => {
@@ -213,11 +209,17 @@ export default function Saidas() {
               const saldoCor = saldo === null ? 'text-slate-400' : saldo <= 0 ? 'text-red-600' : saldo <= 5 ? 'text-amber-500' : 'text-emerald-600'
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 rounded-lg p-2">
-                  <div className="col-span-12 sm:col-span-6">
-                    <ItemCombobox itens={itensFiltrados} value={linha.item_id}
+                  <div className="col-span-12 sm:col-span-3">
+                    <select className="input !text-xs" value={linha.estoque}
+                      onChange={e => setLinhas(ls => ls.map((l, i) => i === idx ? { ...l, estoque: e.target.value, item_id: '' } : l))}>
+                      {ESTOQUES.map(op => <option key={op}>{op}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-12 sm:col-span-4">
+                    <ItemCombobox itens={itensDoEstoque(linha.estoque)} value={linha.item_id}
                       onChange={v => setLinha(idx, 'item_id', v)} />
                   </div>
-                  <div className="col-span-9 sm:col-span-4">
+                  <div className="col-span-9 sm:col-span-2">
                     <input type="number" min="1" step="1" placeholder="Qtd" value={linha.quantidade}
                       className={`input ${!linha.quantidade ? 'border-red-400' : insuf ? 'border-amber-400' : ''}`}
                       onChange={e => setLinha(idx, 'quantidade', e.target.value === '' ? '' : Math.floor(Number(e.target.value)))} />

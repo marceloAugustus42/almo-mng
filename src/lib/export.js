@@ -178,3 +178,65 @@ export function exportEntradas(entradas) {
   XLSX.utils.book_append_sheet(wb,ws,'Entradas')
   XLSX.writeFile(wb,'Almoxarifado_Entradas.xlsx')
 }
+
+// Exporta relatório de um pedido específico
+export function exportPedido(pedido, itens) {
+  const wb = XLSX.utils.book_new()
+  const ws = {}
+
+  const NAV2 = '1B3A5C'
+  const AZUL2 = '2E6DA4'
+
+  // Título
+  titulo(ws, `PEDIDO ${pedido.numero}`, 3)
+
+  // Informações do pedido
+  const infos = [
+    ['Nº Pedido:',   pedido.numero],
+    ['Data:',        fmtDate(pedido.data)],
+    ['Destino:',     pedido.destino],
+    ['Solicitante:', pedido.solicitante || '—'],
+    ['Responsável:', pedido.responsavel || '—'],
+    ['Observações:', pedido.obs || '—'],
+  ]
+  infos.forEach(([label, valor], i) => {
+    const r = i + 1
+    ws[XLSX.utils.encode_cell({r, c:0})] = { v: label, t:'s', s:{font:{bold:true,name:'Arial',sz:10}, alignment:{horizontal:'right'}} }
+    ws[XLSX.utils.encode_cell({r, c:1})] = { v: valor,  t:'s', s:{font:{name:'Arial',sz:10}} }
+    ws[XLSX.utils.encode_cell({r, c:2})] = { v: '',     t:'s' }
+  })
+
+  // Separador
+  const sepRow = infos.length + 1
+  ws[XLSX.utils.encode_cell({r:sepRow, c:0})] = {v:'', t:'s'}
+
+  // Cabeçalho da tabela de itens
+  const hdrRow = sepRow + 1
+  ;['Item','Unidade','Quantidade'].forEach((h,c) => {
+    ws[XLSX.utils.encode_cell({r:hdrRow, c})] = {v:h, t:'s'}
+  })
+  hdr(ws, hdrRow+1, 3, NAV2)
+
+  // Itens do pedido
+  let totQtd = 0
+  itens.forEach((it, i) => {
+    const r = hdrRow + 1 + i
+    totQtd += Number(it.quantidade)
+    ;[it.item_nome, it.item_unidade||'', Number(it.quantidade)].forEach((v,c) => {
+      cell(ws, r, c, v, i%2===0)
+    })
+  })
+
+  // Total
+  const totRow = hdrRow + 1 + itens.length
+  ws[XLSX.utils.encode_cell({r:totRow, c:0})] = {v:'TOTAL', t:'s', s:{font:{bold:true,name:'Arial'}, fill:{patternType:'solid',fgColor:{rgb:'BDD7EE'}}, alignment:{horizontal:'right'}}}
+  ws[XLSX.utils.encode_cell({r:totRow, c:1})] = {v:'', t:'s', s:{fill:{patternType:'solid',fgColor:{rgb:'BDD7EE'}}}}
+  cell(ws, totRow, 2, totQtd, false, 'BDD7EE')
+
+  ws['!cols'] = [30, 14, 14].map(w=>({wch:w}))
+  ws['!ref']  = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:totRow, c:2}})
+  ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:2}}]
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Pedido')
+  XLSX.writeFile(wb, `Pedido_${pedido.numero}.xlsx`)
+}
